@@ -1,0 +1,339 @@
+/* Enhanced Executioner Styles - Real-time Trading Data Binding */
+
+/* Signal Type Badges */
+.execution-stream-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.25rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.signal-buy {
+  color: #7ae5a8;
+  background: rgba(68, 216, 138, 0.15);
+  border: 1px solid rgba(68, 216, 138, 0.4);
+}
+
+.signal-sell {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid rgba(255, 107, 107, 0.4);
+}
+
+.signal-neutral {
+  color: #8cbec2;
+  background: rgba(140, 190, 194, 0.1);
+  border: 1px solid rgba(140, 190, 194, 0.3);
+}
+
+/* Live Badge Status Variants */
+.execution-live-badge {
+  transition: all 200ms ease;
+}
+
+.status-live {
+  border-color: rgba(68, 216, 138, 0.85);
+  background: rgba(68, 216, 138, 0.12);
+  color: #7ae5a8;
+  animation: pulse-live 2s infinite;
+}
+
+.status-loading {
+  border-color: rgba(255, 193, 7, 0.6);
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  animation: pulse-loading 1s infinite;
+}
+
+.status-error {
+  border-color: rgba(255, 107, 107, 0.6);
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
+}
+
+@keyframes pulse-live {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes pulse-loading {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Price Display Enhancement */
+.execution-price-block {
+  gap: 0.75rem;
+}
+
+.execution-price-secondary {
+  color: #70999d;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.65rem;
+}
+
+.execution-price-timestamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  color: #70999d;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+}
+
+.execution-intent-console {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
+  color: #b8c9cd;
+  background: #0a181c;
+  border: 1px solid #203b43;
+  font: 0.7rem 'DM Mono', monospace;
+}
+
+.execution-intent-console-heading,
+.execution-intent-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.execution-intent-console-heading {
+  color: #37d6dc;
+  text-transform: uppercase;
+}
+
+.execution-intent-state {
+  font-weight: 700;
+}
+
+.intent-queued,
+.intent-submitting { color: #fbbf24; }
+.intent-accepted { color: #44d88a; }
+.intent-rejected,
+.intent-expired,
+.intent-invalidated { color: #ff6b6b; }
+
+.execution-intent-empty,
+.execution-position-summary { color: #70999d; }
+
+.execution-terminal {
+  display: grid;
+  gap: 0.65rem;
+  min-height: 25rem;
+  padding: 0.25rem 0;
+  color: #b9d6d3;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.execution-terminal-group {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.execution-terminal-section {
+  margin-top: 0.25rem;
+  color: var(--cyan);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+}
+
+.terminal-section-changed {
+  animation: terminal-update 1.4s ease;
+}
+
+.terminal-updated {
+  margin-left: 0.6rem;
+  color: #f2c879;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+}
+
+@keyframes terminal-update {
+  0%, 100% { color: var(--cyan); }
+  35% { color: #f2c879; }
+}
+
+.execution-terminal-line span:first-child {
+  color: #7fa8a7;
+}
+
+.terminal-symbol {
+  color: #f0f7e8;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.terminal-pass,
+.terminal-ready {
+  color: #7ae5a8;
+}
+
+.terminal-block {
+  color: #ff9999;
+}
+
+.terminal-wait {
+  color: #f2c879;
+}
+
+.terminal-hidden {
+  visibility: hidden;
+  min-height: 1.05em;
+}
+
+.execution-terminal-source,
+.execution-terminal-loading,
+.execution-terminal-error {
+  display: block;
+  margin-top: 0.75rem;
+  color: #70999d;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+}
+
+.execution-terminal-error {
+  color: #ff9999;
+}
+
+.execution-terminal-live-event {
+  display: block;
+  margin-top: 0.4rem;
+  color: #f2c879;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+}
+
+.paper-execution-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Decision Stream */
+.execution-decision-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(55, 214, 220, 0.1);
+}
+
+.decision-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.decision-why-trade {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.decision-why-not {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.decision-label {
+  color: var(--cyan-muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.decision-why-trade .decision-label {
+  color: #7ae5a8;
+}
+
+.decision-why-not .decision-label {
+  color: #ff9999;
+}
+
+/* Loading State */
+.execution-grid-row.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Stream Cell Adjustments for Multi-Line Content */
+.execution-stream-cell {
+  min-height: 7.5rem;
+  gap: 0.6rem;
+}
+
+/* Context Label Enhancement */
+.execution-context-label {
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* Instrument Board Status Message */
+.instrument-board-status {
+  color: var(--cyan-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  background: rgba(55, 214, 220, 0.02);
+  border-top: 1px solid var(--line);
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1400px) {
+  .execution-board-shell {
+    min-width: 40rem;
+  }
+
+  .execution-grid-row {
+    grid-template-columns: 3rem repeat(var(--columns, 2), minmax(12rem, 1fr));
+  }
+
+  .execution-price-secondary {
+    display: none;
+  }
+}
+
+@media (max-width: 1200px) {
+  .execution-stream-cell {
+    min-height: 6.5rem;
+  }
+
+  .execution-grid-row {
+    min-height: 5.25rem;
+  }
+
+  .execution-stream-ticks {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .execution-stream-ticks span {
+    font-size: 0.65rem;
+  }
+}
