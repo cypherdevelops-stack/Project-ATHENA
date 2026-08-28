@@ -74,6 +74,7 @@ def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> Orch
             'newsSnapshotId': str(news_snapshot.snapshot_id) if news_snapshot else None,
             'momentumAlignment': analysis['momentumSnapshot']['alignment'],
             'momentumSchemaVersion': analysis['momentumSnapshot']['schemaVersion'],
+            'smcAlignment': (analysis.get('smcContext') or {}).get('alignment', 'UNKNOWN'),
         },
     )
     if canonical_decision.action.endswith('_APPROVED') and decision.get('strategy') and decision.get('direction') and decision.get('setup'):

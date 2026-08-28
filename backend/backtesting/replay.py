@@ -21,7 +21,7 @@ def session_candles(session, timeframe=None):
         query = query.filter(timestamp__gte=session.start_time)
     if session.end_time is not None:
         query = query.filter(timestamp__lte=session.end_time)
-    return [candle.as_dict() for candle in query]
+    return [candle.as_dict() for candle in query.order_by('timestamp', 'id')]
 
 
 def _snapshot(session, candle):

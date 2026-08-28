@@ -52,6 +52,7 @@ def build_approved_setup(*, account, candidate: dict[str, Any], strategy: str, c
             'currentPrice': current_price,
             'risk': risk,
             'reasonCodes': candidate.get('reasonCodes', []),
+            'smc': candidate.get('smcEvidence', {}),
         },
     )
     return setup.as_payload()

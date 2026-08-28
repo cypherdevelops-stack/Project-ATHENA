@@ -13,6 +13,7 @@ class TradeSetupTests(SimpleTestCase):
             'entryZone': {'lower': 99, 'upper': 101},
             'score': 84,
             'confirmation': {'rejection': True, 'micro_mss': True},
+            'smcEvidence': {'alignment': 'ALIGNED'},
             'poiTime': 1000,
             'decisionState': 'READY',
         }
@@ -33,6 +34,7 @@ class TradeSetupTests(SimpleTestCase):
         self.assertEqual(setup['takeProfit2'], 105)
         self.assertEqual(setup['riskReward'], 2.5)
         self.assertEqual(setup['score'], 84)
+        self.assertEqual(setup['evidence']['smc']['alignment'], 'ALIGNED')
 
     def test_missing_candidate_stays_observe_without_trade_values(self):
         setup = build_trade_setup(candidate={}, risk=None)

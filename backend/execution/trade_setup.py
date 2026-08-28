@@ -18,7 +18,10 @@ def build_trade_setup(*, candidate: dict, risk: dict | None, timeframe_minutes: 
             'volume': None,
             'riskReward': None,
             'score': candidate.get('score', 0),
-            'evidence': candidate.get('confirmation', {}),
+            'evidence': {
+                'confirmation': candidate.get('confirmation', {}),
+                'smc': candidate.get('smcEvidence', {}),
+            },
             'expiresAt': None,
         }
 
@@ -46,6 +49,9 @@ def build_trade_setup(*, candidate: dict, risk: dict | None, timeframe_minutes: 
         'riskAmount': risk.get('riskAmount') if risk else None,
         'riskReward': round(reward / risk_distance, 2) if risk_distance else None,
         'score': candidate.get('score', 0),
-        'evidence': candidate.get('confirmation', {}),
+        'evidence': {
+            'confirmation': candidate.get('confirmation', {}),
+            'smc': candidate.get('smcEvidence', {}),
+        },
         'expiresAt': expires_at,
     }
