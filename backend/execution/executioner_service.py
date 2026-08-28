@@ -12,6 +12,7 @@ from backend.execution.paper_engine import build_paper_trade, PaperTradeError
 from backend.execution.risk_engine import assess_risk
 from backend.execution.xgboost_engine import XGBoostEngine
 from backend.execution.trade_setup import build_trade_setup
+from backend.market.momentum import build_momentum_map
 
 if TYPE_CHECKING:
     from backend.accounts.models import Account
@@ -97,6 +98,11 @@ def generate_execution_analysis(
         # Detect market structure at both timeframes
         m5_features = detect_features(m5_candles, 'M5')
         m1_features = detect_features(m1_candles, 'M1')
+        momentum_map = build_momentum_map(
+            {'M5': m5_candles, 'M1': m1_candles},
+            structure_by_timeframe={'M5': m5_features.get('structure', 'UNKNOWN')},
+            timeframes=('M5', 'M1'),
+        )
         
         if m5_features['status'] == 'INSUFFICIENT_DATA' or m1_features['status'] == 'INSUFFICIENT_DATA':
             return {
@@ -136,7 +142,11 @@ def generate_execution_analysis(
         ]
         
         # Generate scalping candidates
-        derived_context = {**(regime_context or {}), **detect_setup_evidence(m1_candles)}
+        derived_context = {
+            **(regime_context or {}),
+            **detect_setup_evidence(m1_candles),
+            'momentumMap': momentum_map.as_dict(),
+        }
         candidates = generate_scalping_candidates(
             account=account,
             broker_symbol=account.broker_symbol,
@@ -179,6 +189,7 @@ def generate_execution_analysis(
             'decisionStream': decision_stream,
             'price': current_price_data,
             'regimeContext': regime_context,
+            'momentumMap': momentum_map.as_dict(),
         }
     
     except Exception as e:
@@ -366,12 +377,21 @@ def generate_orchestrated_execution_analysis(
         current_equity = account.account_equity if hasattr(account, 'account_equity') else 100000
         portfolio_state = portfolio_governor.evaluate_portfolio_state(current_equity=current_equity)
         news_sentiment = news_sentiment or {}
+        structure_by_timeframe = {'H1': (regime_context or {}).get('structure', 'UNKNOWN')}
+        momentum_map = build_momentum_map(
+            {
+                'H4': h4_candles or [], 'H1': h1_candles or [],
+                'M15': m15_candles or [], 'M5': m5_candles or [],
+            },
+            structure_by_timeframe=structure_by_timeframe,
+        )
         portfolio_state = {**portfolio_state, 'news_locked': news_sentiment.get('news_locked', True), 'news_reason': news_sentiment.get('reason', 'News sentiment is unavailable.'), 'news_sentiment': news_sentiment}
 
         # Set portfolio context on orchestrator
         orchestrator.set_portfolio_state(
             regime=regime_context.get('regime', 'UNKNOWN') if regime_context else 'UNKNOWN',
             state=portfolio_state,
+            momentum_map=momentum_map.as_dict(),
         )
 
         # Generate SCALPING candidates
@@ -396,6 +416,7 @@ def generate_orchestrated_execution_analysis(
             orchestrator.set_portfolio_state(
                 regime=regime_context.get('regime', 'UNKNOWN') if regime_context else 'UNKNOWN',
                 state=portfolio_state,
+                momentum_map=momentum_map.as_dict(),
             )
         news_reaction = assess_market_reaction(
             expected_score=float(news_sentiment.get('score', 0)),
@@ -431,6 +452,7 @@ def generate_orchestrated_execution_analysis(
                 'news_state': news_sentiment.get('state', 'DEGRADED'),
                 'news_reason': news_sentiment.get('reason', 'News sentiment is unavailable.'),
                 'news_provider_available': news_sentiment.get('provider_available', False),
+                'momentumMap': momentum_map.as_dict(),
             }
             scalping_candidates = generate_scalping_candidates(
                 account=account,
@@ -547,6 +569,7 @@ def generate_orchestrated_execution_analysis(
                 'reasonCodes': list(condition_codes),
             },
             'portfolioState': portfolio_state,
+            'momentumMap': momentum_map.as_dict(),
         }
 
     except Exception as e:

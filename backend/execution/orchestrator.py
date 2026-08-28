@@ -33,6 +33,7 @@ class PortfolioState:
     execution_allowed: bool
     market_open: bool
     news_sentiment: dict
+    momentum_map: dict
 
 
 class StrategyOrchestrator:
@@ -54,7 +55,7 @@ class StrategyOrchestrator:
         self._day_candidate: Optional[StrategyCandidate] = None
         self._portfolio_state: Optional[PortfolioState] = None
 
-    def set_portfolio_state(self, regime: str, state: dict) -> None:
+    def set_portfolio_state(self, regime: str, state: dict, momentum_map: dict | None = None) -> None:
         """Set the shared portfolio context available to all strategies."""
         self._last_regime = regime
         self._portfolio_state = PortfolioState(
@@ -67,6 +68,7 @@ class StrategyOrchestrator:
             execution_allowed=state.get('execution_allowed', True),
             market_open=state.get('market_open', True),
             news_sentiment=state.get('news_sentiment', {}),
+            momentum_map=momentum_map or state.get('momentumMap', {}),
         )
 
     def ingest_scalping_candidate(self, candidate: dict, ml_probability: float = 0.0) -> None:
@@ -219,6 +221,7 @@ class StrategyOrchestrator:
                 'account_equity': self._portfolio_state.account_equity,
             },
             'news': self._portfolio_state.news_sentiment,
+            'momentumMap': self._portfolio_state.momentum_map,
             'decision': {
                 'strategy': recommended_strategy.strategy if recommended_strategy else None,
                 'action': execution_decision,
@@ -257,6 +260,7 @@ class StrategyOrchestrator:
             'daily_drawdown_pct': self._portfolio_state.daily_drawdown_pct,
             'risk_available': self._portfolio_state.risk_available,
             'news_sentiment': self._portfolio_state.news_sentiment,
+            'momentumMap': self._portfolio_state.momentum_map,
         }
 
     def reset(self) -> None:

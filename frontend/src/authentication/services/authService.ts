@@ -251,6 +251,8 @@ export type ExecutionAnalysis = {
     m1?: { structure?: string; status?: string; events?: Array<Record<string, unknown>>; orderBlocks?: Array<Record<string, unknown>>; fairValueGaps?: Array<Record<string, unknown>> };
   };
   candidates?: Array<Record<string, unknown>>;
+  scalping?: { status?: string; candidates?: Array<Record<string, unknown>> };
+  dayTrading?: { status?: string; candidates?: Array<Record<string, unknown>> };
   decisionStream?: DecisionStream;
   regimeContext?: { structure?: string; structureReason?: string; macd?: string; macdReason?: string; volatility?: string; volatilityReason?: string; regime?: string; htf_bias?: string };
   price?: {

@@ -5,6 +5,7 @@ from django.test import TestCase
 from .contracts import NewsEvent
 from .engine import NewsEngine
 from .models import AdaptiveNewsStatistic
+from .models import NewsProviderQuality
 from .normalizer import normalize_event
 from .reaction import assess_market_reaction
 from .risk import assess_execution_conditions, assess_news_risk
@@ -120,3 +121,9 @@ class NewsEngineTests(TestCase):
         self.assertEqual(eur.for_symbol('EURUSD').fundamental_bias, 'BEARISH')
         self.assertEqual(jpy.for_symbol('USDJPY').fundamental_bias, 'BULLISH')
         self.assertGreater(eur.entity_pressure['USD'], 0)
+
+    def test_provider_quality_is_recorded_for_engine_calls(self):
+        NewsEngine(StaticProvider([{'title': 'Dollar gains'}])).analyze(symbol='XAUUSD')
+        metric = NewsProviderQuality.objects.get(provider_name='news_provider')
+        self.assertTrue(metric.available)
+        self.assertEqual(metric.item_count, 1)

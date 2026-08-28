@@ -41,9 +41,19 @@ class NewsEngine:
         if self.provider is None:
             return self._unavailable('News provider is not configured.')
         try:
-            raw_items = self.provider.fetch_latest(symbols=[symbol])
+            from .provider_quality import observe_provider_call
+            raw_items, _ = observe_provider_call(
+                provider_name=getattr(self.provider, 'name', 'news_provider'),
+                fetch=self.provider.fetch_latest,
+                symbols=[symbol],
+            )
             if self.calendar_provider is not None:
-                raw_items += self.calendar_provider.fetch_events(start=now, end=now + timedelta(hours=24))
+                calendar_items, _ = observe_provider_call(
+                    provider_name=getattr(self.calendar_provider, 'name', 'calendar_provider'),
+                    fetch=lambda symbols: self.calendar_provider.fetch_events(start=now, end=now + timedelta(hours=24)),
+                    symbols=[symbol],
+                )
+                raw_items += calendar_items
             events = [normalize_event(item, source_reliability=float(item.get('source_reliability', 0.7))) for item in raw_items]
             events = [extract_entities(classify_event(event)) for event in events if event.headline]
             events = cluster_events(events)

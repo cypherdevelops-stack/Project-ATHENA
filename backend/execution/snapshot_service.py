@@ -6,6 +6,7 @@ from backend.execution.contracts import OrchestrationDecision
 from backend.execution.models import OrchestrationSnapshot
 from backend.execution.lifecycle_events import publish_lifecycle_event
 from backend.execution.intent_service import persist_execution_intent
+from backend.market.momentum_amef import build_momentum_snapshot
 
 
 def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> OrchestrationSnapshot | None:
@@ -14,6 +15,7 @@ def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> Orch
         return None
 
     canonical_decision = OrchestrationDecision.from_analysis(analysis)
+    analysis['momentumSnapshot'] = build_momentum_snapshot(analysis)
     analysis.setdefault('orchestration', {}).setdefault('decision', {})['decisionId'] = str(canonical_decision.decision_id)
     analysis['decisionId'] = str(canonical_decision.decision_id)
     orchestration = analysis.get('orchestration') or {}
@@ -70,6 +72,8 @@ def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> Orch
             'reason': canonical_decision.reason,
             'reasonCodes': canonical_decision.reason_codes,
             'newsSnapshotId': str(news_snapshot.snapshot_id) if news_snapshot else None,
+            'momentumAlignment': analysis['momentumSnapshot']['alignment'],
+            'momentumSchemaVersion': analysis['momentumSnapshot']['schemaVersion'],
         },
     )
     if canonical_decision.action.endswith('_APPROVED') and decision.get('strategy') and decision.get('direction') and decision.get('setup'):

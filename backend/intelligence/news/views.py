@@ -10,6 +10,7 @@ from backend.accounts.models import Account
 
 from .config import news_settings
 from .models import AdaptiveNewsStatistic, NewsIntelligenceSnapshot, NewsReactionObservation
+from .provider_quality import provider_quality_summary
 from .providers.registry import build_configured_registry
 
 
@@ -170,6 +171,7 @@ def provider_health_view(request):
     registry = build_configured_registry(settings)
     return JsonResponse({
         'providers': registry.health(),
+        'quality': [provider_quality_summary(provider_name=name) for name in registry.health()],
         'configured': bool(registry.health()),
         'failClosed': settings['fail_closed'],
     })

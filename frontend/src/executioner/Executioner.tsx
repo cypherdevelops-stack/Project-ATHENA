@@ -20,8 +20,10 @@ function TerminalLine({ label, value, tone = '' }: { label?: string; value: stri
   return <div className={`execution-terminal-line ${tone}`}><span>{label}</span>{label && ' : '}{value}</div>;
 }
 
-function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus }: { instrument: string; analysis: ExecutionAnalysis | null; signal: TradeSignal | null; modelStatus: { version?: string | null; trainedAt?: string | null } | null }) {
-  const candidate = analysis?.candidates?.[0] as Record<string, any> | undefined;
+type ExecutionMode = 'SCALPING' | 'DAY_TRADING';
+
+function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus, mode }: { instrument: string; analysis: ExecutionAnalysis | null; signal: TradeSignal | null; modelStatus: { version?: string | null; trainedAt?: string | null } | null; mode: ExecutionMode }) {
+  const candidate = (mode === 'DAY_TRADING' ? analysis?.dayTrading?.candidates?.[0] : analysis?.scalping?.candidates?.[0] ?? analysis?.candidates?.[0]) as Record<string, any> | undefined;
   const setup = candidate?.setup as Record<string, any> | undefined;
   const gates = (candidate?.gates ?? []) as Array<{ name: string; status: string }>;
   const regime = analysis?.regimeContext;
@@ -75,11 +77,18 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus }: { in
     { section: 'GATES', rows: gates.map((gate) => (
       <TerminalLine key={gate.name} label={gate.name.replace(/_GATE$/, '').replaceAll('_', ' ')} value={`${gate.status === 'PASS' ? '✓' : gate.status === 'BLOCK' ? '✕' : '…'} ${gate.status}`} tone={gate.status === 'PASS' ? 'terminal-pass' : gate.status === 'BLOCK' ? 'terminal-block' : 'terminal-wait'} />
     ))},
-    { section: 'SCALP STATE', rows: [
+    { section: `${mode === 'SCALPING' ? 'SCALP' : 'DAY TRADING'} STATE`, rows: mode === 'SCALPING' ? [
       <TerminalLine key="bias" label="Bias" value={candidate?.direction === 'SELL' ? 'SHORT' : candidate?.direction === 'BUY' ? 'LONG' : 'UNKNOWN'} />,
       <TerminalLine key="liquidity" label="Liquidity" value={setupMissing.includes('LIQUIDITY_SWEEP') ? `${liquiditySide} - NOT SWEPT` : `${liquiditySide} - SWEPT`} />,
       <TerminalLine key="liquidity-timeframe" label="Sweep timeframe" value={`${confirmationTimeframe} near ${liquidityPriceText}`} />,
       <TerminalLine key="poi" label="POI" value={candidate?.poiType ? `${candidate.poiType} ${candidate.entryZone ? `${formatPrice(candidate.entryZone.lower)} - ${formatPrice(candidate.entryZone.upper)}` : ''}` : 'NOT CONFIRMED'} />,
+    ] : [
+      <TerminalLine key="bias" label="Bias" value={candidate?.direction === 'SELL' ? 'SHORT' : candidate?.direction === 'BUY' ? 'LONG' : 'UNKNOWN'} />,
+      <TerminalLine key="h1-structure" label="H1 structure" value={String(candidate?.evidence?.h1_structure ?? candidate?.htf_structure ?? 'UNKNOWN')} />,
+      <TerminalLine key="h4-structure" label="H4 structure" value={String(candidate?.evidence?.h4_structure ?? 'UNKNOWN')} />,
+      <TerminalLine key="pullback" label="Pullback" value={candidate?.pullback_detected ? 'DETECTED' : 'AWAITING'} />,
+      <TerminalLine key="m15-alignment" label="M15 alignment" value={String(candidate?.evidence?.m15_structure ?? 'UNKNOWN')} />,
+      <TerminalLine key="poi" label="POI" value={candidate?.poi ? 'CONFIRMED' : 'AWAITING'} />,
     ]},
     { section: 'STATUS', rows: [
       <TerminalLine key="status" value={`${candidate?.decisionState === 'READY' ? '🟢' : '⏳'} ${status}`} tone={candidate?.decisionState === 'READY' ? 'terminal-ready' : ''} />,
@@ -118,6 +127,7 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus }: { in
     'XGBOOST MODEL': { modelStatus, mlPrediction },
     GATES: gates,
     'SCALP STATE': { direction: candidate?.direction, poi: candidate?.poiType, entryZone: candidate?.entryZone, missing: setupMissing },
+    'DAY TRADING STATE': { direction: candidate?.direction, poi: candidate?.poiType, entryZone: candidate?.entryZone, missing: setupMissing },
     STATUS: { state: candidate?.decisionState, status },
     'SETUP SCORE': candidate?.score,
     'RISK ENGINE': { tradeSetup, stopLoss: signal?.stopLoss, takeProfit: signal?.takeProfit, riskReward: signal?.riskReward },
@@ -183,6 +193,7 @@ export function Executioner() {
   const [paperError, setPaperError] = useState<string | null>(null);
   const [isAddingInstrument, setIsAddingInstrument] = useState(false);
   const [instrumentDraft, setInstrumentDraft] = useState('');
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>('SCALPING');
 
   // Load accounts on mount
   useEffect(() => {
@@ -437,7 +448,13 @@ export function Executioner() {
           <p className="eyebrow">EXECUTION PLANE / INSTRUMENTS</p>
           <h1>ATHENA / Executioner</h1>
         </div>
-        {defaultAccount && <span className="account-chip">{defaultAccount.login} / {defaultAccount.displayName}</span>}
+        <div className="execution-header-controls">
+          <div className="execution-mode-switch" role="group" aria-label="Execution strategy view">
+            <button type="button" className={executionMode === 'SCALPING' ? 'execution-mode-active' : ''} aria-pressed={executionMode === 'SCALPING'} onClick={() => setExecutionMode('SCALPING')}>Scalping</button>
+            <button type="button" className={executionMode === 'DAY_TRADING' ? 'execution-mode-active' : ''} aria-pressed={executionMode === 'DAY_TRADING'} onClick={() => setExecutionMode('DAY_TRADING')}>Day trading</button>
+          </div>
+          {defaultAccount && <span className="account-chip">{defaultAccount.login} / {defaultAccount.displayName}</span>}
+        </div>
       </header>
 
       <section className="execution-intent-console" aria-label="Execution intent status">
@@ -503,7 +520,7 @@ export function Executioner() {
             <div className="execution-left-handle execution-left-label">MAP</div>
             {instrumentDetails.map(({ instrument, analysis, signal, account, paperPosition, latestEvent, isLoading, dataError }) => (
               <div key={`${instrument}-mapping`} className="execution-mapping-cell">
-                {isLoading && !analysis ? <div className="execution-terminal-loading">Connecting to live analysis...</div> : dataError ? <div className="execution-terminal-error">{dataError}</div> : <ProgressiveAnalysis instrument={instrument} analysis={analysis} signal={signal} modelStatus={modelStatus} />}
+                {isLoading && !analysis ? <div className="execution-terminal-loading">Connecting to live analysis...</div> : dataError ? <div className="execution-terminal-error">{dataError}</div> : <ProgressiveAnalysis instrument={instrument} analysis={analysis} signal={signal} modelStatus={modelStatus} mode={executionMode} />}
                 {latestEvent && <span className="execution-terminal-live-event">{latestEvent}</span>}
                 {paperPosition && <span className="execution-terminal-live-event">PAPER {paperPosition.state}: {paperPosition.direction} {formatPrice(paperPosition.entry)} / SL {formatPrice(paperPosition.stop_loss)} / TP2 {formatPrice(paperPosition.take_profit2)}</span>}
                 <span className="execution-terminal-source">{account?.brokerSymbol || 'Not mapped'} / {account?.login || 'No account'}</span>
