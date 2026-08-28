@@ -12,6 +12,7 @@ def format_event(event) -> str:
     data = event.data
     labels = {
         'REGIME_UPDATE': f"HTF REGIME      {data.get('regime', 'UNKNOWN')}",
+        'MOMENTUM_UPDATE': f"MOMENTUM        {data.get('alignment', 'UNKNOWN')} ({data.get('confidence', 0):.0%})",
         'GATE_RESULT': f"{data.get('gate', 'GATE')} GATE       {data.get('status', 'UNKNOWN')}",
         'LIQUIDITY_APPROACHING': '-> Sell-side liquidity approaching',
         'LIQUIDITY_SWEEP': f"Liquidity swept ({data.get('side', 'UNKNOWN')})",

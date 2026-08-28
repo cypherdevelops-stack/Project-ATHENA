@@ -23,6 +23,7 @@ class RegimeEngineTests(SimpleTestCase):
         self.assertEqual(result.htf_bias, 'NEUTRAL')
         self.assertIn('Insufficient candle history', result.structure_reason)
         self.assertIn('Insufficient candle history', result.macd_reason)
+        self.assertEqual(result.macd_context['direction'], 'UNKNOWN')
 
     def test_bullish_ema_alignment_produces_bullish_regime(self):
         closes = [100 + index * 0.05 for index in range(200)]
@@ -52,3 +53,5 @@ class RegimeEngineTests(SimpleTestCase):
         self.assertIn('structureReason', payload)
         self.assertIn('macdReason', payload)
         self.assertIn('volatilityReason', payload)
+        self.assertIn('macdContext', payload)
+        self.assertIn('histogramState', payload['macdContext'])

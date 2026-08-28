@@ -3,19 +3,25 @@ from __future__ import annotations
 from .gates import detect_scalping_setup, evaluate_gates
 from backend.execution.xgboost_engine import XGBoostEngine
 from backend.smc.detector import detect_entry_confirmation
+from backend.market.momentum import momentum_evidence
 
 
 def _in_zone(price: float, item: dict) -> bool:
     return item['lowerBound'] <= price <= item['upperBound']
 
 
-def _score_setup(*, aligned: bool, in_zone: bool, has_structure_event: bool, has_confluence: bool, context: dict | None) -> tuple[int, dict[str, int]]:
+def _score_setup(*, direction: str, aligned: bool, in_zone: bool, has_structure_event: bool, has_confluence: bool, context: dict | None) -> tuple[int, dict[str, int]]:
     context = context or {}
     liquidity_sweep = context.get('liquidity_sweep', context.get('sell_side_liquidity_swept', has_structure_event))
     structure_confirmed = context.get('structure_confirmed', context.get('bullish_mss', context.get('bearish_mss', has_structure_event)))
     displacement = context.get('displacement', context.get('bullish_displacement', context.get('bearish_displacement', has_structure_event)))
     momentum_confirmed = context.get('momentum_confirmed', context.get('bullish_mss', context.get('bearish_mss', has_structure_event)))
     fresh_poi = context.get('fresh_poi', context.get('fresh_bullish_poi', context.get('fresh_bearish_poi', in_zone)))
+    momentum = momentum_evidence(context.get('momentumMap'), direction) if context.get('momentumMap') else {
+        'points': 5 if momentum_confirmed else 0,
+        'alignment': 'LEGACY',
+        'reason': 'Momentum confirmation is supplied by the existing setup evidence.',
+    }
     components = {
         'htfBias': 15 if context.get('htf_bias', 'UNKNOWN') in {'BUY', 'SELL'} else (15 if not context else 0),
         'liquiditySetup': 15 if liquidity_sweep else 0,
@@ -25,7 +31,7 @@ def _score_setup(*, aligned: bool, in_zone: bool, has_structure_event: bool, has
         'freshPoi': 10 if in_zone or fresh_poi else 0,
         'poiConfluence': 10 if has_confluence else 0,
         'correlationAlignment': 5 if context.get('correlation_allowed', True) else 0,
-        'momentum': 5 if momentum_confirmed else 0,
+        'momentum': round(momentum['points']),
     }
     return sum(components.values()), components
 
@@ -57,6 +63,7 @@ def generate_scalping_candidates(*, account, broker_symbol: str, current_price: 
         bias_aligned = (direction == 'BULLISH' and regime_bias == 'BUY') or (direction == 'BEARISH' and regime_bias == 'SELL')
         in_zone = _in_zone(current_price, poi)
         score, score_components = _score_setup(
+            direction=direction,
             aligned=aligned,
             in_zone=in_zone,
             has_structure_event=has_structure_event,
@@ -137,6 +144,7 @@ def generate_scalping_candidates(*, account, broker_symbol: str, current_price: 
             'gates': [gate.as_dict() for gate in gate_results],
             'setup': setup,
             'confirmation': confirmation,
+            'momentumEvidence': momentum_evidence(context.get('momentumMap'), direction) if context.get('momentumMap') else None,
         })
         if ml_engine is not None:
             candidates[-1]['mlPrediction'] = ml_engine.predict(candidate=candidates[-1], context={**context, 'm1_structure': lower_structure})

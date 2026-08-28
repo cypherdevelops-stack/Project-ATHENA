@@ -159,6 +159,8 @@ def _publish_analysis_events(payload: dict, *, symbol: str, user=None, account=N
     publish('MARKET_UPDATE', price)
     regime = payload.get('regimeContext') or {}
     publish('REGIME_UPDATE', regime)
+    if payload.get('momentumMap'):
+        publish('MOMENTUM_UPDATE', payload['momentumMap'])
     candidates = payload.get('candidates') or []
     if not candidates:
         return
@@ -210,6 +212,8 @@ def _publish_orchestrated_analysis_events(payload: dict, *, symbol: str, user=No
     
     regime = payload.get('regime') or {}
     publish('REGIME_UPDATE', regime)
+    if payload.get('momentumMap'):
+        publish('MOMENTUM_UPDATE', payload['momentumMap'])
     
     orchestration = payload.get('orchestration') or {}
     publish('ORCHESTRATION_RESULT', orchestration)

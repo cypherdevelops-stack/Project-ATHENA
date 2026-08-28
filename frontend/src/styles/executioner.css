@@ -1,5 +1,47 @@
 /* Enhanced Executioner Styles - Real-time Trading Data Binding */
 
+.execution-header-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.execution-mode-switch {
+  display: inline-flex;
+  padding: 0.2rem;
+  border: 1px solid #29484e;
+  background: #081417;
+  border-radius: 0.3rem;
+}
+
+.execution-mode-switch button {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 0.18rem;
+  color: #7fa8a7;
+  background: transparent;
+  font: 0.68rem 'DM Mono', monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.execution-mode-switch button:hover,
+.execution-mode-switch button:focus-visible {
+  color: #d9f7ed;
+  outline: 1px solid #37d6dc;
+  outline-offset: -1px;
+}
+
+.execution-mode-switch .execution-mode-active {
+  color: #071719;
+  background: #37d6dc;
+  font-weight: 700;
+}
+
 /* Signal Type Badges */
 .execution-stream-value {
   display: inline-flex;

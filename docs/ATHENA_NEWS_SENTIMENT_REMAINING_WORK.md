@@ -377,10 +377,25 @@ Publish and render:
 
 ## Validation Gates Before Production
 
+### Phase 6 status
+
+- [x] Phase 6 baseline query APIs, AMEF record creation, and immutable news snapshot persistence are complete.
+- [ ] Production completion still requires richer provider-health telemetry, direct trade-outcome linkage, and historical news query/report validation.
+
 ### Phase 5 status
 
 - [x] Phase 5 baseline market-reaction and execution-safety implementation is complete.
 - [ ] Production automation still requires scheduled pre/post sampling, replay integration, and broker slippage outcome capture.
+
+### Phase 7 status
+
+- [x] Phase 7 baseline provider-quality telemetry and chronological adaptive-validation framework are complete.
+- [ ] Production completion still requires multi-provider source-agreement metrics, trained financial NLP model evaluation, promotion/rollback storage, and historical outcome validation.
+
+### Phase 8 status
+
+- [x] Phase 8 Executioner strategy-view baseline is complete, including Scalping and Day Trading toggle support.
+- [ ] Production completion still requires the full event timeline, calendar view, blackout countdown, reaction history, provider-health stream events, and dashboard-wide news panels.
 
 The News Engine should not be considered production-ready until all of the following are true:
 
@@ -395,13 +410,17 @@ The News Engine should not be considered production-ready until all of the follo
 - [x] Pre-event and post-event blackout windows are configurable.
 - [ ] Spread and volatility protections are enforced on every execution path.
 - [ ] Market reaction observations are captured automatically.
-- [ ] News context is attached to journal and AMEF records.
+- [x] News context is attached to journal and AMEF records.
 - [x] Adaptive advice requires sufficient chronological history.
 - [ ] Adaptive models are validated against a deterministic baseline.
+- [x] A chronological candidate-versus-baseline validation framework exists.
 - [x] Frontend and Stream expose risk reasoning clearly.
 - [ ] Replay/backtesting uses only point-in-time news data.
 - [x] No news component can independently authorize a trade.
 - [x] A configurable baseline relationship map exists for supported asset classes.
+- [x] Authenticated current-state, snapshot, reaction, adaptive-statistics, and provider-health query APIs exist.
+- [x] A stable AMEF news record is created for persisted news snapshots.
+- [x] Executioner supports switching between Scalping and Day Trading views.
 
 ## Recommended Implementation Order
 

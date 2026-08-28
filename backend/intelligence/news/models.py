@@ -125,3 +125,20 @@ class NewsAMEFRecord(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class NewsProviderQuality(models.Model):
+    """Observed provider quality; metrics inform confidence but never authorize trades."""
+
+    provider_name = models.CharField(max_length=64)
+    observed_at = models.DateTimeField(default=timezone.now, db_index=True)
+    available = models.BooleanField(default=False)
+    latency_ms = models.FloatField(null=True, blank=True)
+    item_count = models.PositiveIntegerField(default=0)
+    duplicate_count = models.PositiveIntegerField(default=0)
+    source_agreement = models.FloatField(null=True, blank=True)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-observed_at']
+        indexes = [models.Index(fields=['provider_name', '-observed_at'])]
