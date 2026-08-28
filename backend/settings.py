@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'backend.authentication.apps.BackendAuthenticationConfig',
     'backend.accounts.apps.AccountsConfig',
     'backend.journal.apps.JournalConfig',
+    'backend.intelligence.news.apps.NewsConfig',
     'backend.support.apps.SupportConfig',
     'backend.backtesting.apps.BacktestingConfig',
     'backend.smc.apps.SmcConfig',

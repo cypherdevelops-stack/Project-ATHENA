@@ -13,6 +13,7 @@ from backend.execution.paper_engine import open_paper_position, list_paper_posit
 from backend.market.regime import evaluate_regime
 from backend.market.service import MarketDataError, market_data_service
 from backend.market.news_sentiment import fetch_news_sentiment
+from backend.intelligence.news.risk import analysis_execution_allowed
 from backend.stream.event_bus import ScalpEvent, scalp_event_bus
 from backend.execution.model_training import model_status, start_training, training_status, validate_saved_model
 from backend.execution.xgboost_engine import get_active_xgboost_engine
@@ -213,6 +214,8 @@ def _publish_orchestrated_analysis_events(payload: dict, *, symbol: str, user=No
     orchestration = payload.get('orchestration') or {}
     publish('ORCHESTRATION_RESULT', orchestration)
     publish('NEWS_SENTIMENT', payload.get('news') or orchestration.get('news') or {})
+    publish('NEWS_REACTION', payload.get('newsReaction') or {})
+    publish('NEWS_RISK', payload.get('executionConditions') or {})
     
     scalping = payload.get('scalping') or {}
     publish('SCALPING_STATUS', {
@@ -439,6 +442,10 @@ def live_order_view(request):
         if account is None:
             raise LiveExecutionError('No enabled trading account is available.')
         data = market_data_service.fetch(account, timeframes=('M1', 'M5', 'H1'))
+        news_ctx = fetch_news_sentiment(symbol=account.canonical_asset or account.broker_symbol)
+        news_allowed, news_reason = analysis_execution_allowed({'news': news_ctx.as_dict()}, symbol=account.canonical_asset or account.broker_symbol)
+        if not news_allowed:
+            raise LiveExecutionError(f'News execution block: {news_reason}')
         signals = generate_trade_signals(account=account, m5_candles=data.candles['M5'], m1_candles=data.candles['M1'], current_price_data=data.snapshot.as_dict(), regime_context=evaluate_regime(data.candles['H1']).as_dict(), ml_engine=get_active_xgboost_engine())
         return JsonResponse(send_live_order(account=account, setup=signals.get('tradeSetup') or {}, requested_price=signals.get('tradeSetup', {}).get('entry'), max_slippage=float(body.get('maxSlippage', 0)), idempotency_key=body.get('idempotencyKey')))
     except (json.JSONDecodeError, TypeError, ValueError, LiveExecutionError) as error:

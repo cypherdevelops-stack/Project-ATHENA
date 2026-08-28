@@ -35,6 +35,21 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
             quote=quote,
         )
 
+    from backend.intelligence.news.risk import analysis_execution_allowed
+    news_allowed, news_reason = analysis_execution_allowed(
+        analysis,
+        symbol=account.canonical_asset or account.broker_symbol or 'XAUUSD',
+    )
+    if not news_allowed:
+        return _record(
+            account=account,
+            decision_id=decision_id,
+            status='REJECTED',
+            reason=f'News execution block: {news_reason}',
+            setup={},
+            quote=quote,
+        )
+
     candidates_key = 'scalping' if strategy == 'SCALPING' else 'dayTrading'
     candidates = (analysis.get(candidates_key) or {}).get('candidates') or []
     candidate = next((item for item in candidates if item.get('direction')), None)

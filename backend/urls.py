@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/journal/', include('backend.journal.urls')),
     path('api/support/', include('backend.support.urls')),
     path('api/market/', include('backend.market.urls')),
+    path('api/news/', include('backend.intelligence.news.urls')),
     path('api/smc/', include('backend.smc.urls')),
     path('api/execution/', include('backend.execution.urls')),
     path('api/backtesting/', include('backend.backtesting.urls')),

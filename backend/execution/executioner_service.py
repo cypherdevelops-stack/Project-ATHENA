@@ -196,6 +196,9 @@ def generate_trade_signals(
     current_price_data: dict | None = None,
     regime_context: dict | None = None,
     ml_engine: XGBoostEngine | None = None,
+    news_sentiment: dict | None = None,
+    pre_event_price: float | None = None,
+    market_volatility: str | None = None,
 ) -> dict:
     """
     Generate trade signals and paper trade setup from analysis.
@@ -323,6 +326,9 @@ def generate_orchestrated_execution_analysis(
     current_price_data: dict | None = None,
     regime_context: dict | None = None,
     ml_engine: XGBoostEngine | None = None,
+    news_sentiment: dict | None = None,
+    pre_event_price: float | None = None,
+    market_volatility: str | None = None,
 ) -> dict:
     """
     Generate unified execution analysis using the Strategy Orchestrator.
@@ -377,6 +383,27 @@ def generate_orchestrated_execution_analysis(
             current_price = current_price_data['ask']
         except ExecutionAnalysisUnavailable:
             current_price = None
+
+        from backend.intelligence.news.reaction import assess_market_reaction
+        from backend.intelligence.news.risk import assess_execution_conditions
+        execution_allowed, condition_codes, condition_reason = assess_execution_conditions(
+            spread=(current_price_data or {}).get('spread'),
+            volatility=market_volatility or (regime_context or {}).get('volatility'),
+            max_spread=(regime_context or {}).get('max_spread'),
+        )
+        if not execution_allowed:
+            portfolio_state = {**portfolio_state, 'execution_allowed': False, 'execution_reason': condition_reason}
+            orchestrator.set_portfolio_state(
+                regime=regime_context.get('regime', 'UNKNOWN') if regime_context else 'UNKNOWN',
+                state=portfolio_state,
+            )
+        news_reaction = assess_market_reaction(
+            expected_score=float(news_sentiment.get('score', 0)),
+            before_price=pre_event_price,
+            after_price=current_price,
+            spread=(current_price_data or {}).get('spread'),
+            volatility=market_volatility or (regime_context or {}).get('volatility', 'UNKNOWN'),
+        ).as_dict()
 
         if current_price and m5_features.get('status') == 'READY' and m1_features.get('status') == 'READY':
             # Advance POI states
@@ -513,6 +540,12 @@ def generate_orchestrated_execution_analysis(
             'regime': regime_context,
             'regimeContext': regime_context,
             'news': news_sentiment,
+            'newsReaction': news_reaction,
+            'executionConditions': {
+                'allowed': execution_allowed,
+                'reason': condition_reason,
+                'reasonCodes': list(condition_codes),
+            },
             'portfolioState': portfolio_state,
         }
 

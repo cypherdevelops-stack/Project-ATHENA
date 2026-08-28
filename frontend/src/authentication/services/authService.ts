@@ -264,9 +264,11 @@ export type ExecutionAnalysis = {
     latencyMs?: number | null;
   };
   news?: NewsSentiment;
+  newsReaction?: { expected_direction: string; actual_direction: string; state: string; price_change?: number | null; volatility: string; spread?: number | null; reason: string };
+  executionConditions?: { allowed: boolean; reason: string; reasonCodes: string[] };
 };
 
-export type NewsSentiment = { provider_available: boolean; state: string; score: number; label: string; confidence: number; news_locked: boolean; reason: string; headlines: Array<{ title: string; source: string; score: number; label: string; high_impact: boolean }> };
+export type NewsSentiment = { provider_available: boolean; state: string; score: number; label: string; confidence: number; news_locked: boolean; reason: string; headlines?: Array<{ title: string; source: string; score: number; label: string; high_impact: boolean }>; events?: Array<Record<string, unknown>>; instruments?: Record<string, Record<string, unknown>>; adaptive_advice?: { status: string; expected_reaction: string; confidence: number; sample_count: number; confirmation_rate: number; reason: string } };
 
 export type TradeSignal = {
   signal: 'BUY' | 'SELL' | 'NEUTRAL';

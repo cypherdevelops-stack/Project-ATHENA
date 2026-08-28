@@ -6,6 +6,10 @@ import os
 def news_settings() -> dict:
     return {
         'feed_url': os.getenv('ATHENA_NEWS_FEED_URL'),
+        'rss_url': os.getenv('ATHENA_NEWS_RSS_URL'),
+        'calendar_url': os.getenv('ATHENA_NEWS_CALENDAR_URL'),
+        'api_key': os.getenv('ATHENA_NEWS_API_KEY'),
+        'api_key_header': os.getenv('ATHENA_NEWS_API_KEY_HEADER', 'Authorization'),
         'timeout': float(os.getenv('ATHENA_NEWS_REQUEST_TIMEOUT_SECONDS', '3')),
         'pre_event_blackout_minutes': int(os.getenv('ATHENA_NEWS_PRE_EVENT_BLACKOUT_MINUTES', '15')),
         'post_event_blackout_minutes': int(os.getenv('ATHENA_NEWS_POST_EVENT_BLACKOUT_MINUTES', '10')),

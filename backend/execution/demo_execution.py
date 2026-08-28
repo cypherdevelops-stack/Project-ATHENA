@@ -39,6 +39,13 @@ def execute_confirmed_demo_decision(*, account, snapshot, confirmation: bool, id
     action = decision.get('action', orchestration.get('status', 'OBSERVE'))
     if not action.endswith('_APPROVED') or strategy not in {'SCALPING', 'DAY_TRADING'}:
         raise DemoExecutionError(f'Decision {action} is not approved for execution.')
+    from backend.intelligence.news.risk import analysis_execution_allowed
+    news_allowed, news_reason = analysis_execution_allowed(
+        snapshot.full_payload,
+        symbol=account.canonical_asset or account.broker_symbol or 'XAUUSD',
+    )
+    if not news_allowed:
+        raise DemoExecutionError(f'News execution block: {news_reason}')
     decision_timestamp = snapshot.timestamp
     expires_at = (decision.get('expiresAt') or orchestration.get('expiresAt'))
     if expires_at:

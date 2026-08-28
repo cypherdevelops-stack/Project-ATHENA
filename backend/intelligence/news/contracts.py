@@ -72,6 +72,8 @@ class NewsIntelligence:
     reason: str
     events: tuple[NewsEvent, ...] = ()
     instruments: dict[str, InstrumentNewsState] = field(default_factory=dict)
+    adaptive_advice: dict = field(default_factory=dict)
+    entity_pressure: dict[str, float] = field(default_factory=dict)
 
     def for_symbol(self, symbol: str) -> InstrumentNewsState:
         return self.instruments.get(symbol.upper(), InstrumentNewsState(symbol=symbol.upper()))
@@ -87,4 +89,6 @@ class NewsIntelligence:
             'reason': self.reason,
             'events': [event.as_dict() for event in self.events],
             'instruments': {symbol: state.as_dict() for symbol, state in self.instruments.items()},
+            'adaptive_advice': self.adaptive_advice,
+            'entity_pressure': self.entity_pressure,
         }

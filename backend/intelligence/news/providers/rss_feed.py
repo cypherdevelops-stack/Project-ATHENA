@@ -8,12 +8,17 @@ from xml.etree import ElementTree
 class RssFeedProvider:
     name = 'rss_feed'
 
-    def __init__(self, url: str, *, timeout: float = 3.0):
+    def __init__(self, url: str, *, timeout: float = 3.0, api_key: str | None = None, api_key_header: str = 'Authorization'):
         self.url = url
         self.timeout = timeout
+        self.api_key = api_key
+        self.api_key_header = api_key_header
 
     def fetch_latest(self, *, symbols: list[str]) -> list[dict]:
-        request = Request(self.url, headers={'Accept': 'application/rss+xml, application/xml', 'User-Agent': 'ATHENA/1.0'})
+        headers = {'Accept': 'application/rss+xml, application/xml', 'User-Agent': 'ATHENA/1.0'}
+        if self.api_key:
+            headers[self.api_key_header] = f'Bearer {self.api_key}' if self.api_key_header.lower() == 'authorization' else self.api_key
+        request = Request(self.url, headers=headers)
         with urlopen(request, timeout=self.timeout) as response:
             root = ElementTree.fromstring(response.read())
         items = []

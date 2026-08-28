@@ -31,6 +31,8 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus }: { in
   const paperTrade = signal?.paperTrade as Record<string, any> | null | undefined;
   const mlPrediction = candidate?.mlPrediction as { status?: string; probability?: number | null } | undefined;
   const news = analysis?.news;
+  const newsReaction = analysis?.newsReaction;
+  const executionConditions = analysis?.executionConditions;
   const setupMissing = (setup?.missing ?? []) as string[];
   const liquiditySide = candidate?.direction === 'SELL' ? 'BUY-SIDE ABOVE RECENT HIGHS' : 'SELL-SIDE BELOW RECENT LOWS';
   const analysisTimeframe = String(candidate?.timeframe ?? 'M1');
@@ -66,6 +68,9 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus }: { in
       <TerminalLine key="news-label" label="Bias" value={news?.label ?? 'UNKNOWN'} />,
       <TerminalLine key="news-score" label="Score" value={news ? `${(news.score * 100).toFixed(1)}%` : '--'} />,
       <TerminalLine key="news-reason" label="Reason" value={news?.reason ?? 'News sentiment unavailable.'} />,
+      <TerminalLine key="news-reaction" label="Reaction" value={newsReaction ? `${newsReaction.expected_direction} expected / ${newsReaction.actual_direction} actual (${newsReaction.state})` : 'UNCONFIRMED'} />,
+      <TerminalLine key="news-execution" label="Execution" value={executionConditions ? `${executionConditions.allowed ? 'ALLOWED' : 'BLOCKED'} - ${executionConditions.reason}` : 'UNKNOWN'} tone={executionConditions?.allowed ? 'terminal-pass' : 'terminal-block'} />,
+      <TerminalLine key="news-adaptive" label="Adaptive" value={news?.adaptive_advice ? `${news.adaptive_advice.status} / ${news.adaptive_advice.sample_count} samples` : 'UNAVAILABLE'} />,
     ]},
     { section: 'GATES', rows: gates.map((gate) => (
       <TerminalLine key={gate.name} label={gate.name.replace(/_GATE$/, '').replaceAll('_', ' ')} value={`${gate.status === 'PASS' ? '✓' : gate.status === 'BLOCK' ? '✕' : '…'} ${gate.status}`} tone={gate.status === 'PASS' ? 'terminal-pass' : gate.status === 'BLOCK' ? 'terminal-block' : 'terminal-wait'} />
@@ -206,7 +211,7 @@ export function Executioner() {
   useEffect(() => {
     if (!defaultAccount) return;
     const stream = new EventSource(authService.getExecutionEventsUrl(defaultAccount.canonicalAsset || 'XAUUSD'), { withCredentials: true });
-    const eventTypes = ['MARKET_UPDATE', 'REGIME_UPDATE', 'NEWS_SENTIMENT', 'GATE_RESULT', 'SETUP_WAITING', 'SETUP_CONFIRMED', 'RISK_RESULT'];
+    const eventTypes = ['MARKET_UPDATE', 'REGIME_UPDATE', 'NEWS_SENTIMENT', 'NEWS_REACTION', 'NEWS_RISK', 'GATE_RESULT', 'SETUP_WAITING', 'SETUP_CONFIRMED', 'RISK_RESULT'];
     const handleEvent = (event: Event) => {
       const message = event as MessageEvent<string>;
       try {

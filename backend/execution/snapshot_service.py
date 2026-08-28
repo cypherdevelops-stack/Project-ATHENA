@@ -54,6 +54,12 @@ def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> Orch
         ml_probability=scalp_primary.get('evidence', {}).get('ml_probability', 0),
         full_payload=analysis,
     )
+    from backend.intelligence.news.persistence import persist_news_snapshot
+    news_snapshot = persist_news_snapshot(
+        account=account,
+        analysis=analysis,
+        orchestration_snapshot=snapshot,
+    )
     publish_lifecycle_event(
         account=account,
         decision_id=snapshot.decision_id,
@@ -63,6 +69,7 @@ def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> Orch
         payload={
             'reason': canonical_decision.reason,
             'reasonCodes': canonical_decision.reason_codes,
+            'newsSnapshotId': str(news_snapshot.snapshot_id) if news_snapshot else None,
         },
     )
     if canonical_decision.action.endswith('_APPROVED') and decision.get('strategy') and decision.get('direction') and decision.get('setup'):
