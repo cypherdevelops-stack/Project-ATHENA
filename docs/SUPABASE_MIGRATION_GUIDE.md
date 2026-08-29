@@ -44,20 +44,12 @@ This guide walks you through migrating your Django backend from SQLite to Supaba
 
 ## Step 2: Update Django Dependencies
 
-### 2.1 Create requirements.txt
+### 2.1 Install the existing requirements
 
-Create file `backend/requirements.txt`:
+The PostgreSQL adapter is already included in the repository root `requirements.txt`:
 
 ```txt
-Django==6.0.3
-daphne==4.1.2
-djangorestframework==3.14.0
-channels==4.0.0
-psycopg2-binary==2.9.9
-python-dotenv==1.0.0
-xgboost==2.0.3
-numpy==1.24.3
-pandas==2.0.3
+psycopg2-binary==2.9.12
 ```
 
 **Note:** Adjust versions to match your actual dependencies. The key addition is `psycopg2-binary` (PostgreSQL adapter).
@@ -65,7 +57,7 @@ pandas==2.0.3
 ### 2.2 Install Dependencies
 
 ```bash
-cd backend
+cd ..
 pip install -r requirements.txt
 ```
 
@@ -88,7 +80,7 @@ pip install psycopg2-binary
 
 ### 3.1 Create .env File
 
-Create `backend/.env`:
+Create `.env` in the repository root:
 
 ```env
 # Supabase Database Configuration
@@ -112,11 +104,15 @@ ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
 
 ### 3.2 Update settings.py
 
-Modify `backend/settings.py`:
+The repository settings already load `.env` from the root and select PostgreSQL
+when `DB_ENGINE=django.db.backends.postgresql` is set. Without that variable,
+local development continues to use SQLite.
 
-**Find this section:**
+**For reference, the settings load environment variables like this:**
 ```python
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ```
@@ -129,25 +125,15 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables
-load_dotenv(BASE_DIR.parent / '.env')
+load_dotenv(BASE_DIR / '.env')
 ```
 
-**Find the DATABASES section:**
+**The PostgreSQL branch uses these values:**
+```python
 ```python
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-```
-
-**Replace with:**
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.sqlite3'),
         'NAME': os.getenv('DB_NAME', 'postgres'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
@@ -157,7 +143,7 @@ DATABASES = {
         'CONN_MAX_AGE': 600,
         'OPTIONS': {
             'connect_timeout': 10,
-            'options': '-c default_transaction_isolation=read_committed',
+            'sslmode': 'require',
         },
     }
 }
