@@ -214,6 +214,8 @@ def _publish_orchestrated_analysis_events(payload: dict, *, symbol: str, user=No
     publish('REGIME_UPDATE', regime)
     if payload.get('momentumMap'):
         publish('MOMENTUM_UPDATE', payload['momentumMap'])
+    if payload.get('smcContext'):
+        publish('SMC_CONTEXT_UPDATE', payload['smcContext'])
     
     orchestration = payload.get('orchestration') or {}
     publish('ORCHESTRATION_RESULT', orchestration)

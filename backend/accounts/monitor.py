@@ -5,7 +5,7 @@ import subprocess
 import threading
 import time
 
-from django.db import close_old_connections
+from django.db import OperationalError, close_old_connections
 from django.utils import timezone
 
 from .credentials import decrypt_password
@@ -132,8 +132,11 @@ def check_account(account: Account) -> None:
 def monitor_loop() -> None:
     while True:
         close_old_connections()
-        for account in Account.objects.filter(enabled=True).iterator():
-            check_account(account)
+        try:
+            for account in Account.objects.filter(enabled=True).iterator():
+                check_account(account)
+        except OperationalError:
+            close_old_connections()
         close_old_connections()
         time.sleep(CHECK_INTERVAL_SECONDS)
 

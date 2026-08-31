@@ -34,6 +34,7 @@ class PortfolioState:
     market_open: bool
     news_sentiment: dict
     momentum_map: dict
+    smc_context: dict
 
 
 class StrategyOrchestrator:
@@ -55,7 +56,7 @@ class StrategyOrchestrator:
         self._day_candidate: Optional[StrategyCandidate] = None
         self._portfolio_state: Optional[PortfolioState] = None
 
-    def set_portfolio_state(self, regime: str, state: dict, momentum_map: dict | None = None) -> None:
+    def set_portfolio_state(self, regime: str, state: dict, momentum_map: dict | None = None, smc_context: dict | None = None) -> None:
         """Set the shared portfolio context available to all strategies."""
         self._last_regime = regime
         self._portfolio_state = PortfolioState(
@@ -69,6 +70,7 @@ class StrategyOrchestrator:
             market_open=state.get('market_open', True),
             news_sentiment=state.get('news_sentiment', {}),
             momentum_map=momentum_map or state.get('momentumMap', {}),
+            smc_context=smc_context or state.get('smcContext', {}),
         )
 
     def ingest_scalping_candidate(self, candidate: dict, ml_probability: float = 0.0) -> None:
@@ -99,6 +101,7 @@ class StrategyOrchestrator:
                 'gates': candidate.get('gates', []),
                 'ml_probability': ml_probability,
                 'htf_bias': self._portfolio_state.regime if self._portfolio_state else "UNKNOWN",
+                'smc': candidate.get('smcEvidence', {}),
             },
             decision_state=candidate.get('decisionState', 'OBSERVE'),
             entry_zone=entry_zone,
@@ -222,6 +225,7 @@ class StrategyOrchestrator:
             },
             'news': self._portfolio_state.news_sentiment,
             'momentumMap': self._portfolio_state.momentum_map,
+            'smcContext': self._portfolio_state.smc_context,
             'decision': {
                 'strategy': recommended_strategy.strategy if recommended_strategy else None,
                 'action': execution_decision,
@@ -261,6 +265,7 @@ class StrategyOrchestrator:
             'risk_available': self._portfolio_state.risk_available,
             'news_sentiment': self._portfolio_state.news_sentiment,
             'momentumMap': self._portfolio_state.momentum_map,
+            'smcContext': self._portfolio_state.smc_context,
         }
 
     def reset(self) -> None:

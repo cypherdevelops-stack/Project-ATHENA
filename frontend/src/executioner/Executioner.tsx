@@ -27,6 +27,11 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus, mode }
   const setup = candidate?.setup as Record<string, any> | undefined;
   const gates = (candidate?.gates ?? []) as Array<{ name: string; status: string }>;
   const regime = analysis?.regimeContext;
+  const smcContext = analysis?.smcContext;
+  const smcH1 = smcContext?.timeframes?.H1;
+  const smcH4 = smcContext?.timeframes?.H4;
+  const smcH1Structure = smcH1?.structure ?? candidate?.evidence?.h1_structure ?? candidate?.htf_structure ?? 'UNKNOWN';
+  const smcH1Bias = smcH1?.bias ?? (smcH1Structure === 'BULLISH' ? 'BUY' : smcH1Structure === 'BEARISH' ? 'SELL' : 'UNKNOWN');
   const price = analysis?.price ?? signal?.fullAnalysis?.price;
   const entryZone = signal?.entryZone ?? candidate?.entryZone as { lower: number; upper: number } | undefined;
   const tradeSetup = signal?.tradeSetup;
@@ -54,8 +59,10 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus, mode }
       <TerminalLine key="ask" label="ASK" value={formatPrice(price?.ask)} />,
       <TerminalLine key="spread" label="SPREAD" value={formatPrice(price?.spread)} />,
     ]},
-    { section: 'HTF REGIME', rows: [
-      <TerminalLine key="structure" label="H1 Structure" value={`${regime?.structure ?? 'UNKNOWN'} - ${regime?.structureReason ?? 'No structure explanation available.'}`} />,
+    { section: 'SMC TREND', rows: [
+      <TerminalLine key="h1-structure" label="H1 structure" value={`${smcH1Structure} / ${smcH1Bias}`} />,
+      <TerminalLine key="smc-context" label="SMC context" value={smcContext?.higherTimeframeBias ? `${smcContext.higherTimeframe ?? 'HTF'} ${smcContext.higherTimeframeBias}` : 'UNKNOWN'} />,
+      <TerminalLine key="smc-alignment" label="Alignment" value={`${smcContext?.alignment ?? 'UNKNOWN'} - ${smcContext?.interpretation ?? 'SMC interpretation unavailable.'}`} />,
       <TerminalLine key="macd" label="MACD" value={`${regime?.macd ?? 'UNKNOWN'} - ${regime?.macdReason ?? 'No MACD explanation available.'}`} />,
       <TerminalLine key="volatility" label="Volatility" value={`${regime?.volatility ?? 'UNKNOWN'} - ${regime?.volatilityReason ?? 'No volatility explanation available.'}`} />,
     ]},
@@ -84,8 +91,8 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus, mode }
       <TerminalLine key="poi" label="POI" value={candidate?.poiType ? `${candidate.poiType} ${candidate.entryZone ? `${formatPrice(candidate.entryZone.lower)} - ${formatPrice(candidate.entryZone.upper)}` : ''}` : 'NOT CONFIRMED'} />,
     ] : [
       <TerminalLine key="bias" label="Bias" value={candidate?.direction === 'SELL' ? 'SHORT' : candidate?.direction === 'BUY' ? 'LONG' : 'UNKNOWN'} />,
-      <TerminalLine key="h1-structure" label="H1 structure" value={String(candidate?.evidence?.h1_structure ?? candidate?.htf_structure ?? 'UNKNOWN')} />,
-      <TerminalLine key="h4-structure" label="H4 structure" value={String(candidate?.evidence?.h4_structure ?? 'UNKNOWN')} />,
+      <TerminalLine key="h1-structure" label="H1 SMC structure" value={`${smcH1Structure} / ${smcH1Bias}`} />,
+      <TerminalLine key="h4-structure" label="H4 SMC structure" value={`${smcH4?.structure ?? candidate?.evidence?.h4_structure ?? 'UNKNOWN'} / ${smcH4?.bias ?? 'UNKNOWN'}`} />,
       <TerminalLine key="pullback" label="Pullback" value={candidate?.pullback_detected ? 'DETECTED' : 'AWAITING'} />,
       <TerminalLine key="m15-alignment" label="M15 alignment" value={String(candidate?.evidence?.m15_structure ?? 'UNKNOWN')} />,
       <TerminalLine key="poi" label="POI" value={candidate?.poi ? 'CONFIRMED' : 'AWAITING'} />,
@@ -123,7 +130,7 @@ function ProgressiveAnalysis({ instrument, analysis, signal, modelStatus, mode }
   const lineCount = lines.reduce((total, group) => total + group.rows.length + (group.section ? 1 : 0), 0);
   const sectionSignatures = {
     MARKET: price,
-    'HTF REGIME': regime,
+    'SMC TREND': { smcContext, smcH1Structure, smcH1Bias, smcH4 },
     'XGBOOST MODEL': { modelStatus, mlPrediction },
     GATES: gates,
     'SCALP STATE': { direction: candidate?.direction, poi: candidate?.poiType, entryZone: candidate?.entryZone, missing: setupMissing },

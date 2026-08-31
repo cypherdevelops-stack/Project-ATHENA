@@ -31,6 +31,10 @@ class OrchestrationSnapshotTests(TestCase):
                     'directionalScores': {'BUY': 0.8, 'SELL': 0.0},
                     'timeframes': {'H1': {'direction': 'BULLISH'}},
                 },
+                'smcContext': {
+                    'alignment': 'CONFLICTING',
+                    'higherTimeframeBias': 'BUY',
+                },
                 'orchestration': {
                     'status': 'OBSERVE',
                     'reason': 'No ready candidates',
@@ -53,6 +57,7 @@ class OrchestrationSnapshotTests(TestCase):
         self.assertIsNotNone(snapshot.decision_id)
         self.assertEqual(snapshot.full_payload['momentumSnapshot']['alignment'], 'ALIGNED')
         self.assertEqual(snapshot.full_payload['momentumSnapshot']['schemaVersion'], 'macd-momentum-v1')
+        self.assertEqual(snapshot.full_payload['smcContext']['alignment'], 'CONFLICTING')
 
     def test_error_analysis_is_not_recorded_as_a_trading_decision(self):
         snapshot = persist_orchestration_snapshot(

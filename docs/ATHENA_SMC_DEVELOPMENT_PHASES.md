@@ -69,6 +69,8 @@ backend/smc/
 
 ## Phase 3: POI Lifecycle and Evidence Quality
 
+**Status: Completed.** Implemented in `backend/smc/scripts/lifecycle.py` and exposed through the analyzer compatibility boundary. POIs now carry explicit lifecycle metadata, age, freshness, mitigation, retest count, source event, invalidation reason, and active-state filtering.
+
 - Define POI states and transitions explicitly: `DETECTED`, `MONITORING`, `REACTED`, `INVALIDATED`, and `EXPIRED` where applicable.
 - Record invalidation reasons and the source event that created each POI.
 - Add freshness, mitigation, retest count, age, and strength fields without changing the meaning of existing fields.
@@ -78,6 +80,8 @@ backend/smc/
 **Exit criteria:** A POI can be audited from formation through invalidation, and stale or invalidated zones cannot be promoted by downstream strategy code.
 
 ## Phase 4: Multi-Timeframe SMC Context
+
+**Status: Completed.** Implemented in `backend/smc/scripts/multi_timeframe.py` and exposed through `analyze_multi_timeframe()`. The analyzer preserves per-timeframe evidence and reports higher-timeframe context, alignment, retracement, conflict, data quality, liquidity, and active POIs.
 
 - Analyze configured H4, H1, M15, M5, and M1 candle streams independently.
 - Produce a structured context containing per-timeframe bias, structure, latest confirmed event, active POIs, liquidity state, and data quality.
@@ -89,6 +93,8 @@ backend/smc/
 
 ## Phase 5: Scalping Candidate Integration
 
+**Status: Completed.** Implemented through `backend/smc/context_service.py` and the scalping candidate adapter. Scalping now consumes unified M1/M5 SMC context, lifecycle-filtered active POIs, extracted evidence, alignment, and interpretation while retaining strategy-owned scoring, gates, and candidate decisions. Focused SMC and scalping validation passes with 23 tests.
+
 - Replace direct private-helper usage in `backend/strategies/scalping/candidates.py` with the public SMC analyzer contract.
 - Map SMC evidence into candidate fields such as `poiType`, `entryZone`, `confirmation`, `scoreComponents`, and `reasonCodes`.
 - Keep scoring and strategy-specific thresholds in the scalping strategy package, not in generic SMC scripts.
@@ -98,6 +104,8 @@ backend/smc/
 **Exit criteria:** SMC detects and explains evidence; the scalping engine decides whether that evidence forms a scalping candidate.
 
 ## Phase 6: Orchestrator Wiring
+
+**Status: Completed.** Implemented shared SMC context wiring in `backend/execution/executioner_service.py` and `backend/execution/orchestrator.py`. SMC remains evidence-only: the orchestrator retains namespaced context and candidate evidence, while portfolio governance still controls the final action. Focused SMC, orchestration, and scalping validation passes with 25 tests.
 
 - Add SMC context to the shared context assembled by `StrategyOrchestrator` without making SMC a competing strategy engine.
 - Extend candidate evidence with a namespaced `smc` payload containing analyzer version, timeframes used, events, POI lifecycle state, and reason codes.
@@ -110,6 +118,8 @@ backend/smc/
 
 ## Phase 7: Executioner Integration and Trade Contract
 
+**Status: Completed.** Implemented SMC evidence propagation through `backend/execution/executioner_service.py`, `backend/execution/setup_service.py`, `backend/execution/trade_setup.py`, and `backend/execution/snapshot_service.py`. Canonical setups, orchestration responses, snapshots, and lifecycle events retain namespaced point-in-time SMC context while risk, account safety, governance, and guarded execution remain authoritative.
+
 - Update `backend/execution/executioner_service.py` to consume the public SMC analyzer boundary through the existing analysis flow.
 - Keep the executioner responsible for composing market context, candidates, risk assessment, trade setup construction, and execution eligibility.
 - Pass SMC evidence into `build_trade_setup()` and journal/snapshot payloads as immutable decision-time context.
@@ -121,6 +131,8 @@ backend/smc/
 
 ## Phase 8: Persistence, Streaming, and Backtesting
 
+**Status: Completed.** Implemented deterministic chronological candle ordering in `backend/backtesting/replay.py`, deduplicated `SMC_CONTEXT_UPDATE` publishing in the orchestrated event stream, and retained point-in-time SMC context through the existing orchestration snapshot payload. Focused Phase 8 and replay validation passes with 4 tests.
+
 - Store the point-in-time SMC context with orchestration snapshots, journal events, and trade outcomes.
 - Publish only meaningful SMC state transitions to SSE/WebSocket streams to avoid duplicate event noise.
 - Add replay support that calculates SMC only from candles available at each historical timestamp.
@@ -130,6 +142,8 @@ backend/smc/
 **Exit criteria:** Historical analysis can reconstruct exactly what SMC knew at decision time, and backtests do not use future candles.
 
 ## Phase 9: Validation and Bounded Adaptation
+
+**Status: Completed.** Implemented `backend/smc/scripts/validation.py` with versioned SMC output, chronological holdout evaluation, minimum-sample fail-closed behavior, confusion metrics, false-confirmation rate, stale-POI rate, slippage tracking, and a bounded advisory adjustment. Adaptation remains explicitly advisory and does not alter live execution authority.
 
 - Build a labelled evaluation set for structure events, POI validity, confirmation quality, and candidate outcomes.
 - Track precision, recall, false confirmations, stale-zone rate, and execution slippage separately from strategy profitability.

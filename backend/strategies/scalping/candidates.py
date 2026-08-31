@@ -3,6 +3,7 @@ from __future__ import annotations
 from .gates import detect_scalping_setup, evaluate_gates
 from backend.execution.xgboost_engine import XGBoostEngine
 from backend.smc.detector import detect_entry_confirmation
+from backend.smc.context_service import build_smc_context, extract_smc_evidence
 from backend.market.momentum import momentum_evidence
 
 
@@ -36,11 +37,32 @@ def _score_setup(*, direction: str, aligned: bool, in_zone: bool, has_structure_
     return sum(components.values()), components
 
 
-def generate_scalping_candidates(*, account, broker_symbol: str, current_price: float, m1_features: dict, m5_features: dict, context: dict | None = None, ml_engine: XGBoostEngine | None = None, m1_candles: list[dict] | None = None) -> list[dict]:
+def generate_scalping_candidates(*, account, broker_symbol: str, current_price: float, m1_features: dict, m5_features: dict, context: dict | None = None, ml_engine: XGBoostEngine | None = None, m1_candles: list[dict] | None = None, m5_candles: list[dict] | None = None) -> list[dict]:
     candidates = []
     higher_structure = m5_features.get('structure', 'UNKNOWN')
     lower_structure = m1_features.get('structure', 'UNKNOWN')
     context = context or {}
+    if m1_candles and 'smcEvidence' not in context:
+        smc_context = build_smc_context(
+            candles_by_timeframe={'M5': m5_candles or [], 'M1': m1_candles},
+            current_price=current_price,
+            timeframes=('M5', 'M1'),
+        )
+        context = {
+            **extract_smc_evidence(
+                smc_context,
+                primary_timeframe='M1',
+                secondary_timeframe='M5',
+                higher_timeframe='M5',
+            ),
+            **context,
+            'smcEvidence': smc_context,
+        }
+    smc_evidence = context.get('smcEvidence', {})
+    active_smc_pois = {
+        (poi.get('type'), poi.get('time'))
+        for poi in smc_evidence.get('timeframes', {}).get('M1', {}).get('activePois', [])
+    }
     hard_gate_codes = []
     if not account.enabled or not account.terminal_connected or not account.trade_allowed:
         hard_gate_codes.append('ACCOUNT_TRADE_NOT_ALLOWED')
@@ -53,7 +75,10 @@ def generate_scalping_candidates(*, account, broker_symbol: str, current_price: 
     }
     hard_gate_codes.extend(code for code, active in hard_gates.items() if active)
     risk_allowed = not hard_gate_codes
-    points_of_interest = m1_features.get('orderBlocks', []) + m1_features.get('fairValueGaps', [])
+    points_of_interest = [
+        poi for poi in (m1_features.get('orderBlocks', []) + m1_features.get('fairValueGaps', []))
+        if not active_smc_pois or (poi.get('type'), poi.get('time')) in active_smc_pois
+    ]
     has_structure_event = bool(m1_features.get('events'))
 
     for index, poi in enumerate(points_of_interest):
@@ -144,6 +169,7 @@ def generate_scalping_candidates(*, account, broker_symbol: str, current_price: 
             'gates': [gate.as_dict() for gate in gate_results],
             'setup': setup,
             'confirmation': confirmation,
+            'smcEvidence': smc_evidence,
             'momentumEvidence': momentum_evidence(context.get('momentumMap'), direction) if context.get('momentumMap') else None,
         })
         if ml_engine is not None:

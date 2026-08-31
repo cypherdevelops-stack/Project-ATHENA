@@ -242,6 +242,13 @@ export type HistoricalDataset = {
 export type ReplayResponse = { session: ReplaySession; analysis: ExecutionAnalysis | Record<string, unknown>; signals: TradeSignal | Record<string, unknown>; metrics?: ReplayMetrics };
 
 export type ExecutionGate = { name: string; status: 'PASS' | 'BLOCK'; reason: string };
+export type SMCContext = {
+  higherTimeframe?: string | null;
+  higherTimeframeBias?: string | null;
+  alignment?: string;
+  interpretation?: string;
+  timeframes?: Record<string, { structure?: string; bias?: string | null; status?: string }>;
+};
 export type ExecutionAnalysis = {
   status: string;
   reason?: string;
@@ -253,6 +260,7 @@ export type ExecutionAnalysis = {
   candidates?: Array<Record<string, unknown>>;
   scalping?: { status?: string; candidates?: Array<Record<string, unknown>> };
   dayTrading?: { status?: string; candidates?: Array<Record<string, unknown>> };
+  smcContext?: SMCContext;
   decisionStream?: DecisionStream;
   regimeContext?: { structure?: string; structureReason?: string; macd?: string; macdReason?: string; volatility?: string; volatilityReason?: string; regime?: string; htf_bias?: string };
   price?: {

@@ -13,6 +13,7 @@ from backend.execution.risk_engine import assess_risk
 from backend.execution.xgboost_engine import XGBoostEngine
 from backend.execution.trade_setup import build_trade_setup
 from backend.market.momentum import build_momentum_map
+from backend.smc.context_service import build_smc_context
 
 if TYPE_CHECKING:
     from backend.accounts.models import Account
@@ -156,6 +157,7 @@ def generate_execution_analysis(
             context=derived_context,
             ml_engine=ml_engine,
             m1_candles=m1_candles,
+            m5_candles=m5_candles,
         )
         
         # Build decision stream (why trade, why not)
@@ -404,6 +406,23 @@ def generate_orchestrated_execution_analysis(
         except ExecutionAnalysisUnavailable:
             current_price = None
 
+        smc_context = build_smc_context(
+            candles_by_timeframe={
+                'H4': h4_candles or [],
+                'H1': h1_candles or [],
+                'M15': m15_candles or [],
+                'M5': m5_candles or [],
+                'M1': m1_candles or [],
+            },
+            current_price=current_price or 0,
+        )
+        orchestrator.set_portfolio_state(
+            regime=regime_context.get('regime', 'UNKNOWN') if regime_context else 'UNKNOWN',
+            state=portfolio_state,
+            momentum_map=momentum_map.as_dict(),
+            smc_context=smc_context,
+        )
+
         from backend.intelligence.news.reaction import assess_market_reaction
         from backend.intelligence.news.risk import assess_execution_conditions
         execution_allowed, condition_codes, condition_reason = assess_execution_conditions(
@@ -417,6 +436,7 @@ def generate_orchestrated_execution_analysis(
                 regime=regime_context.get('regime', 'UNKNOWN') if regime_context else 'UNKNOWN',
                 state=portfolio_state,
                 momentum_map=momentum_map.as_dict(),
+                smc_context=smc_context,
             )
         news_reaction = assess_market_reaction(
             expected_score=float(news_sentiment.get('score', 0)),
@@ -453,6 +473,7 @@ def generate_orchestrated_execution_analysis(
                 'news_reason': news_sentiment.get('reason', 'News sentiment is unavailable.'),
                 'news_provider_available': news_sentiment.get('provider_available', False),
                 'momentumMap': momentum_map.as_dict(),
+                'smcEvidence': smc_context,
             }
             scalping_candidates = generate_scalping_candidates(
                 account=account,
@@ -463,6 +484,7 @@ def generate_orchestrated_execution_analysis(
                 context=derived_context,
                 ml_engine=ml_engine,
                 m1_candles=m1_candles,
+                m5_candles=m5_candles,
             )
 
             # Ingest scalping candidate into orchestrator
@@ -570,6 +592,7 @@ def generate_orchestrated_execution_analysis(
             },
             'portfolioState': portfolio_state,
             'momentumMap': momentum_map.as_dict(),
+            'smcContext': smc_context,
         }
 
     except Exception as e:
