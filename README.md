@@ -980,6 +980,19 @@ npm run dev
 npm run build
 ```
 
+## Render Startup
+
+Set the Render web service's **Start Command** to:
+
+```bash
+bash build.sh
+```
+
+The script installs frontend dependencies, builds the frontend, creates and
+applies Django migrations, collects static files, and starts the ASGI server.
+It runs at each service start, so migrations should be committed to the
+repository and the Render service should use a persistent production database.
+
 ## Python Tests
 
 ```bash
