@@ -28,7 +28,6 @@ class Command(BaseCommand):
         parser.add_argument('--fake', action='store_true')
         parser.add_argument('--fake-initial', action='store_true')
         parser.add_argument('--run-syncdb', action='store_true')
-        parser.add_argument('--skip-checks', action='store_true')
         parser.add_argument('--prune', action='store_true')
 
     def handle(self, *args, **options):

@@ -234,3 +234,28 @@ class MetaApiAccountOnboardingTests(TestCase):
         self.assertEqual(response.status_code, 422)
         account.refresh_from_db()
         self.assertFalse(account.enabled)
+
+    def test_metaapi_token_update_revalidates_and_refreshes_account_facts(self):
+        account = Account.objects.create(
+            user=self.user,
+            display_name='MetaAPI account',
+            connection_method='METAAPI',
+            external_account_id='metaapi-account-id',
+        )
+        updated_facts = {**self.verified_account, 'balance': '1400.00'}
+
+        with patch('backend.accounts.views.verify_metaapi_handshake', return_value=updated_facts) as verify, patch(
+            'backend.accounts.views.encrypt_password',
+            return_value='rotated-encrypted-token',
+        ):
+            response = self.client.patch('/api/account/update', data=json.dumps({
+                'accountId': account.pk,
+                'password': 'rotated-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        verify.assert_called_once_with('metaapi-account-id', 'rotated-token')
+        account.refresh_from_db()
+        self.assertEqual(account.password_encrypted, 'rotated-encrypted-token')
+        self.assertEqual(str(account.balance), '1400.00')
+        self.assertEqual(account.handshake_status, 'SUCCESS')

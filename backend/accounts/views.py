@@ -436,9 +436,31 @@ def update_account_view(request):
         }, status=422)
 
     password = body.get('password')
+    verified_api_account = None
     if password is not None:
         if not isinstance(password, str) or not password:
-            return JsonResponse({'detail': 'A non-empty broker password is required.'}, status=400)
+            return JsonResponse({'detail': 'A non-empty connection credential is required.'}, status=400)
+        if account.connection_method == 'METAAPI':
+            try:
+                verified_api_account = verify_metaapi_handshake(account.external_account_id, password)
+            except MetaApiHandshakeError as error:
+                return JsonResponse({'detail': str(error)}, status=422)
+            account.platform = verified_api_account['platform']
+            account.login = verified_api_account['account_id']
+            account.broker = verified_api_account['broker']
+            account.server = verified_api_account['server']
+            account.balance = verified_api_account['balance']
+            account.equity = verified_api_account['equity']
+            account.leverage = verified_api_account['leverage']
+            account.base_currency = verified_api_account['currency']
+            account.account_mode = verified_api_account['account_mode']
+            account.trade_allowed = verified_api_account['trade_allowed']
+            account.terminal_connected = True
+            account.market_discovery = verified_api_account['market_discovery']
+            account.canonical_asset = account.market_discovery['canonicalAsset']
+            account.broker_symbol = account.market_discovery['brokerSymbol'] or ''
+            account.last_handshake_at = timezone.now()
+            account.handshake_status = 'SUCCESS'
         account.password_encrypted = encrypt_password(password)
     if 'terminal_path' in body:
         account.terminal_path = normalize_terminal_path(body['terminal_path'])
@@ -453,9 +475,14 @@ def update_account_view(request):
         'require_fresh_decision_seconds',
     }
     for field, value in body.items():
-        if field in allowed_fields:
+        if field in allowed_fields and not (
+            account.connection_method == 'METAAPI' and field in {'broker', 'server'}
+        ):
             setattr(account, field, value)
     account.save()
+    if verified_api_account:
+        account.instrument_capabilities.all().delete()
+        _persist_capabilities(account, account.market_discovery)
     account.refresh_from_db()
     return JsonResponse(_account_payload(account))
 
