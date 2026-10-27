@@ -988,10 +988,18 @@ an existing deployment to this split.
 
 ## Frontend
 
+To use the Django server for both the frontend and API, build the frontend and
+collect its static assets once, then start Django:
+
 ```bash
-cd frontend
-npm run dev
+npm run build --prefix frontend
+python manage.py collectstatic --noinput
+python manage.py runserver
 ```
+
+Open `http://127.0.0.1:8000/`. Rebuild and recollect static files after frontend
+changes. The Vite development server (`cd frontend && npm run dev`) remains an
+optional separate-server workflow.
 
 ## Production Frontend Build
 

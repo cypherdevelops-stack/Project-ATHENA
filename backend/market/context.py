@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from statistics import mean
 
 
 def _rate_value(rate, field: str, default=0):
     if isinstance(rate, dict):
-        return rate.get(field, default)
+        aliases = {
+            'time': ('time', 'datetime', 'tm', 'timestamp', 't'),
+            'open': ('open', 'o'),
+            'high': ('high', 'h'),
+            'low': ('low', 'l'),
+            'close': ('close', 'c'),
+            'tick_volume': ('tick_volume', 'tickVolume', 'volume', 'v'),
+        }
+        for key in aliases.get(field, (field,)):
+            if key in rate:
+                return rate[key]
+        return default
     try:
         return rate[field]
     except (IndexError, KeyError, TypeError, ValueError):
@@ -13,17 +25,28 @@ def _rate_value(rate, field: str, default=0):
 
 
 def normalize_candles(rates) -> list[dict]:
-    return [
-        {
-            'time': int(_rate_value(rate, 'time')),
-            'open': float(_rate_value(rate, 'open')),
-            'high': float(_rate_value(rate, 'high')),
-            'low': float(_rate_value(rate, 'low')),
-            'close': float(_rate_value(rate, 'close')),
-            'volume': int(_rate_value(rate, 'tick_volume')),
-        }
-        for rate in ([] if rates is None else rates)
-    ]
+    candles = []
+    for rate in ([] if rates is None else rates):
+        raw_time = _rate_value(rate, 'time')
+        try:
+            if isinstance(raw_time, (int, float)):
+                candle_time = int(raw_time)
+            else:
+                parsed = datetime.fromisoformat(str(raw_time).replace('Z', '+00:00'))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                candle_time = int(parsed.timestamp())
+            candles.append({
+                'time': candle_time,
+                'open': float(_rate_value(rate, 'open')),
+                'high': float(_rate_value(rate, 'high')),
+                'low': float(_rate_value(rate, 'low')),
+                'close': float(_rate_value(rate, 'close')),
+                'volume': int(float(_rate_value(rate, 'tick_volume'))),
+            })
+        except (OverflowError, TypeError, ValueError):
+            continue
+    return candles
 
 
 def classify_regime(candles: list[dict]) -> dict:

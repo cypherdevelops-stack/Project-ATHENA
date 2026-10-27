@@ -133,7 +133,8 @@ def monitor_loop() -> None:
     while True:
         close_old_connections()
         try:
-            for account in Account.objects.filter(enabled=True, connection_method='BROKER').iterator():
+            accounts = list(Account.objects.filter(enabled=True, connection_method='BROKER'))
+            for account in accounts:
                 check_account(account)
         except OperationalError:
             close_old_connections()

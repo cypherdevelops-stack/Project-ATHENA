@@ -37,3 +37,17 @@ class AccountMonitorStartupTests(SimpleTestCase):
             daemon=True,
         )
         thread.return_value.start.assert_called_once_with()
+
+    def test_monitor_loads_accounts_without_a_server_side_cursor(self):
+        account = monitor.Account()
+        accounts = [account]
+        with (
+            patch.object(monitor.Account.objects, 'filter', return_value=accounts),
+            patch.object(monitor, 'check_account') as check_account,
+            patch.object(monitor, 'close_old_connections'),
+            patch.object(monitor.time, 'sleep', side_effect=KeyboardInterrupt),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                monitor.monitor_loop()
+
+        check_account.assert_called_once_with(account)

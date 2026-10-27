@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone as datetime_timezone
+from itertools import combinations
+import math
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.accounts.credentials import decrypt_password
 from backend.accounts.handshake import DEFAULT_MT5_TERMINAL_PATH
+from django.conf import settings
+from django.utils import timezone
 
 from .context import normalize_candles
+from .providers import (
+    FCSApiProvider,
+    MarketDataProviderError,
+    MetaApiHistoricalProvider,
+    TwelveDataProvider,
+)
 
 EAT = ZoneInfo('Africa/Nairobi')
 
@@ -27,6 +38,8 @@ class MarketSnapshot:
     timestamp: str | None
     received_at: str
     latency_ms: int | None
+    quote_source: str = 'MT5'
+    data_quality: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +52,8 @@ class MarketSnapshot:
             'mt5Time': self.timestamp,
             'receivedAt': self.received_at,
             'latencyMs': self.latency_ms,
+            'quoteSource': self.quote_source,
+            'dataQuality': self.data_quality or {},
         }
 
 
@@ -46,6 +61,7 @@ class MarketSnapshot:
 class MarketDataBundle:
     snapshot: MarketSnapshot
     candles: dict[str, list[dict]]
+    data_quality: dict[str, Any]
 
 
 class MT5Adapter:
@@ -123,23 +139,247 @@ class MT5Adapter:
 
 
 class MarketDataService:
-    """Provides normalized snapshots and candles without exposing the MT5 SDK."""
+    """Fetches market data from configured sources and verifies overlapping candles."""
 
-    def __init__(self, adapter_factory=MT5Adapter):
+    def __init__(self, adapter_factory=MT5Adapter, provider_factories=None):
         self.adapter_factory = adapter_factory
+        self.provider_factories = provider_factories
 
     def fetch(self, account, timeframes: tuple[str, ...] = ('M1', 'M5'), candle_count: int = 200) -> MarketDataBundle:
-        adapter = self.adapter_factory()
-        try:
-            adapter.connect(account)
-            snapshot = adapter.snapshot(account)
-            candles = {timeframe: adapter.candles(account, timeframe, candle_count) for timeframe in timeframes}
-            return MarketDataBundle(snapshot=snapshot, candles=candles)
-        finally:
-            adapter.close()
+        verification_timeframes = timeframes or ('M1',)
+        source_candles: dict[str, dict[str, list[dict]]] = {}
+        source_status: dict[str, dict[str, Any]] = {}
+        snapshot = None
+        adapter = None
+
+        if getattr(account, 'connection_method', 'BROKER') == 'BROKER':
+            adapter = self.adapter_factory()
+            try:
+                adapter.connect(account)
+                try:
+                    snapshot = adapter.snapshot(account)
+                    source_status['MT5'] = {'status': 'AVAILABLE'}
+                except Exception:
+                    source_status['MT5'] = {'status': 'UNAVAILABLE', 'reason': 'Live quote unavailable.'}
+                frames = {}
+                for timeframe in verification_timeframes:
+                    try:
+                        frames[timeframe] = adapter.candles(account, timeframe, candle_count)
+                    except Exception:
+                        frames[timeframe] = []
+                source_candles['MT5'] = frames
+                source_status.setdefault('MT5', {'status': 'AVAILABLE'})
+                source_status['MT5']['timeframes'] = {
+                    timeframe: 'AVAILABLE' if frames.get(timeframe) else 'UNAVAILABLE'
+                    for timeframe in verification_timeframes
+                }
+            except Exception:
+                source_status['MT5'] = {'status': 'UNAVAILABLE', 'reason': 'MT5 connection unavailable.'}
+            finally:
+                if adapter is not None:
+                    adapter.close()
+
+        providers = self._providers(account)
+        if providers:
+            with ThreadPoolExecutor(max_workers=len(providers)) as executor:
+                futures = {
+                    executor.submit(
+                        self._fetch_provider,
+                        name,
+                        provider,
+                        account,
+                        verification_timeframes,
+                        candle_count,
+                    ): name
+                    for name, provider in providers
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        frames = future.result()
+                        source_candles[name] = frames
+                        source_status[name] = {
+                            'status': 'AVAILABLE' if any(frames.values()) else 'UNAVAILABLE',
+                            'timeframes': {
+                                timeframe: 'AVAILABLE' if frames.get(timeframe) else 'UNAVAILABLE'
+                                for timeframe in verification_timeframes
+                            },
+                        }
+                    except MarketDataProviderError as error:
+                        source_status[name] = {
+                            'status': 'RATE_LIMITED' if error.rate_limited else 'UNAVAILABLE',
+                            'reason': str(error),
+                        }
+                    except Exception:
+                        source_status[name] = {'status': 'UNAVAILABLE', 'reason': f'{name} data unavailable.'}
+
+        threshold = float(getattr(settings, 'MARKET_DATA_MAX_PRICE_DEVIATION_PERCENT', 0.05))
+        verified_candles = {}
+        timeframe_quality = {}
+        for timeframe in verification_timeframes:
+            feeds = {
+                name: frames[timeframe]
+                for name, frames in source_candles.items()
+                if frames.get(timeframe)
+            }
+            if not feeds:
+                raise MarketDataError(f'No market-data source returned {timeframe} candles.')
+            selected, quality = self._verify_candles(feeds, threshold)
+            verified_candles[timeframe] = selected
+            timeframe_quality[timeframe] = quality
+
+        if snapshot is None:
+            m1 = verified_candles.get('M1') or next(iter(verified_candles.values()))
+            latest = m1[-1]
+            candle_time = datetime.fromtimestamp(latest['time'], tz=datetime_timezone.utc)
+            now = datetime.now(datetime_timezone.utc)
+            snapshot = MarketSnapshot(
+                symbol=account.canonical_asset or account.broker_symbol,
+                broker_symbol=account.broker_symbol,
+                bid=latest['close'],
+                ask=latest['close'],
+                spread=0.0,
+                timestamp=candle_time.astimezone(EAT).isoformat(),
+                received_at=now.astimezone(EAT).isoformat(),
+                latency_ms=round((now - candle_time).total_seconds() * 1000),
+                quote_source='HISTORICAL_CANDLE',
+            )
+
+        all_verified = all(item['verified'] for item in timeframe_quality.values())
+        data_quality = {
+            'verified': all_verified,
+            'execution_allowed': all_verified and snapshot.quote_source == 'MT5',
+            'minimumSources': 2,
+            'maxPriceDeviationPercent': threshold,
+            'timeframes': timeframe_quality,
+            'sources': source_status,
+            'reason': (
+                'All requested timeframes were verified across independent sources.'
+                if all_verified
+                else 'Market data is unverified or conflicting; analysis is available but execution is blocked.'
+            ),
+        }
+        snapshot = MarketSnapshot(
+            **{
+                **snapshot.__dict__,
+                'data_quality': data_quality,
+            }
+        )
+        return MarketDataBundle(
+            snapshot=snapshot,
+            candles={timeframe: verified_candles[timeframe] for timeframe in timeframes},
+            data_quality=data_quality,
+        )
+
+    def _providers(self, account):
+        if self.provider_factories is not None:
+            return [(name, factory()) for name, factory in self.provider_factories]
+        providers = []
+        if getattr(settings, 'TWELVE_DATA_API_KEY', ''):
+            providers.append(('TwelveData', TwelveDataProvider(settings.TWELVE_DATA_API_KEY)))
+        if getattr(settings, 'FCSAPI_API_KEY', ''):
+            providers.append(('FCSAPI', FCSApiProvider(settings.FCSAPI_API_KEY)))
+        if getattr(account, 'connection_method', 'BROKER') == 'METAAPI':
+            providers.append(('MetaAPI', MetaApiHistoricalProvider()))
+        return providers
+
+    @staticmethod
+    def _fetch_provider(name, provider, account, timeframes, candle_count):
+        frames = {}
+        for timeframe in timeframes:
+            try:
+                if name == 'MetaAPI':
+                    candles = provider.candles(account, account.broker_symbol, timeframe, candle_count)
+                else:
+                    candles = provider.candles(account.canonical_asset or account.broker_symbol, timeframe, candle_count)
+                frames[timeframe] = candles
+            except MarketDataProviderError as error:
+                if error.rate_limited:
+                    raise
+                frames[timeframe] = []
+        return frames
+
+    @staticmethod
+    def _verify_candles(feeds, threshold):
+        timestamps = {
+            name: {candle['time']: candle for candle in candles}
+            for name, candles in feeds.items()
+        }
+        common_times = set()
+        for first, second in combinations(timestamps, 2):
+            common_times.update(timestamps[first].keys() & timestamps[second].keys())
+
+        if not common_times:
+            anchor = MarketDataService._preferred_source(feeds)
+            return feeds[anchor], {
+                'verified': False,
+                'sources': list(feeds),
+                'reason': 'Providers returned no overlapping candle timestamps.',
+            }
+
+        comparison_times = sorted(common_times)[-20:]
+        compatible_sources = set(feeds)
+        max_deviation = 0.0
+        for candle_time in comparison_times:
+            pairs = []
+            for first, second in combinations(compatible_sources, 2):
+                first_candle = timestamps[first].get(candle_time)
+                second_candle = timestamps[second].get(candle_time)
+                if first_candle and second_candle:
+                    deviation = max(
+                        abs(first_candle[field] - second_candle[field])
+                        / max(abs(first_candle[field]), abs(second_candle[field]), 1e-12)
+                        * 100
+                        for field in ('open', 'high', 'low', 'close')
+                    )
+                    max_deviation = max(max_deviation, deviation)
+                    if deviation <= threshold:
+                        pairs.append((first, second))
+            if len(compatible_sources) < 2:
+                break
+            if not pairs:
+                compatible_sources = set()
+                break
+            candidates = set(max(pairs, key=lambda pair: sum(
+                1 for other in compatible_sources if other in pair
+            )))
+            for size in range(len(compatible_sources), 1, -1):
+                matches = [
+                    group for group in combinations(compatible_sources, size)
+                    if all(
+                        (first, second) in pairs or (second, first) in pairs
+                        for first, second in combinations(group, 2)
+                    )
+                ]
+                if matches:
+                    candidates = set(matches[0])
+                    break
+            compatible_sources &= candidates
+
+        minimum_majority = len(feeds) // 2 + 1
+        verified = len(compatible_sources) >= 2 and len(compatible_sources) >= minimum_majority
+        selected_source = MarketDataService._preferred_source(
+            {name: feeds[name] for name in compatible_sources or feeds.keys()}
+        )
+        return feeds[selected_source], {
+            'verified': verified,
+            'sources': sorted(compatible_sources),
+            'availableSources': list(feeds),
+            'maxDeviationPercent': round(max_deviation, 6),
+            'reason': (
+                'Overlapping candles agree within the configured tolerance.'
+                if verified
+                else 'Too few providers agree, or provider candles conflict.'
+            ),
+        }
+
+    @staticmethod
+    def _preferred_source(feeds):
+        priorities = {'MT5': 0, 'MetaAPI': 1, 'TwelveData': 2, 'FCSAPI': 3}
+        return min(feeds, key=lambda source: priorities.get(source, 10))
 
     def fetch_snapshot(self, account) -> MarketSnapshot:
-        return self.fetch(account, timeframes=(), candle_count=0).snapshot
+        return self.fetch(account, timeframes=('M1',), candle_count=1).snapshot
 
 
 market_data_service = MarketDataService()
