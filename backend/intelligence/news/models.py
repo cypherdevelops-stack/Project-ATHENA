@@ -10,14 +10,7 @@ class NewsIntelligenceSnapshot(models.Model):
     """Immutable point-in-time news context attached to an orchestration decision."""
 
     snapshot_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    account = models.ForeignKey('accounts.Account', on_delete=models.CASCADE, related_name='news_intelligence_snapshots')
-    orchestration_snapshot = models.ForeignKey(
-        'execution.OrchestrationSnapshot',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='news_snapshots',
-    )
+    account_id = models.BigIntegerField(db_column='account_id', db_index=True)
     decision_id = models.UUIDField(null=True, blank=True, db_index=True)
     symbol = models.CharField(max_length=32, db_index=True)
     captured_at = models.DateTimeField(default=timezone.now, db_index=True)
@@ -52,7 +45,7 @@ class NewsIntelligenceSnapshot(models.Model):
 class NewsReactionObservation(models.Model):
     """AMEF-ready expected-versus-actual reaction record."""
 
-    news_snapshot = models.ForeignKey(NewsIntelligenceSnapshot, on_delete=models.CASCADE, related_name='reaction_observations')
+    news_snapshot_id = models.BigIntegerField(db_column='news_snapshot_id', db_index=True)
     symbol = models.CharField(max_length=32, db_index=True)
     observed_at = models.DateTimeField(default=timezone.now, db_index=True)
     expected_direction = models.CharField(max_length=12, default='UNKNOWN')
@@ -114,7 +107,7 @@ class AdaptiveNewsStatistic(models.Model):
 class NewsAMEFRecord(models.Model):
     """Stable point-in-time fundamental context for AMEF and outcome analysis."""
 
-    news_snapshot = models.OneToOneField(NewsIntelligenceSnapshot, on_delete=models.CASCADE, related_name='amef_record')
+    news_snapshot_id = models.BigIntegerField(db_column='news_snapshot_id', unique=True)
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     event_context = models.JSONField(default=dict)
     asset_context = models.JSONField(default=dict)

@@ -60,7 +60,7 @@ def _drawing_scope(request):
 
 
 def _replay_session(request):
-    return ReplaySession.objects.filter(user=request.user, pk=request.GET.get('sessionId')).select_related('account').first()
+    return ReplaySession.objects.filter(user_id=request.user.pk, pk=request.GET.get('sessionId')).first()
 
 
 def _serialize_dataset(dataset):
@@ -74,7 +74,7 @@ def _serialize_dataset(dataset):
 @require_http_methods(['GET', 'POST'])
 def datasets_view(request):
     if request.method == 'GET':
-        datasets = HistoricalDataset.objects.filter(user=request.user)
+        datasets = HistoricalDataset.objects.filter(user_id=request.user.pk)
         if request.GET.get('accountId'):
             datasets = datasets.filter(account_id=request.GET['accountId'])
         return JsonResponse({'datasets': [_serialize_dataset(dataset) for dataset in datasets.order_by('-created_at')]})
@@ -108,7 +108,7 @@ def replay_view(request):
         if timeframe not in TIMEFRAMES:
             return JsonResponse({'detail': 'Unsupported replay timeframe.'}, status=400)
         try:
-            dataset = HistoricalDataset.objects.filter(user=request.user, account=account, pk=payload.get('datasetId')).first() if payload.get('datasetId') else None
+            dataset = HistoricalDataset.objects.filter(user_id=request.user.pk, account_id=account.pk, pk=payload.get('datasetId')).first() if payload.get('datasetId') else None
             if payload.get('datasetId') and dataset is None:
                 return JsonResponse({'detail': 'Historical dataset not found.'}, status=404)
             def range_bound(value, end=False):
@@ -165,8 +165,8 @@ def drawings_view(request):
         return JsonResponse({'detail': 'No broker symbol is available for this account.'}, status=422)
 
     drawings = BacktestingDrawing.objects.filter(
-        user=request.user,
-        account=account,
+        user_id=request.user.pk,
+        account_id=account.pk,
         symbol=symbol,
         timeframe=timeframe,
     )
@@ -196,8 +196,8 @@ def drawings_view(request):
     except (TypeError, ValueError):
         return JsonResponse({'detail': 'Drawing coordinates must be numeric.'}, status=400)
     drawing = BacktestingDrawing.objects.create(
-        user=request.user,
-        account=account,
+        user_id=request.user.pk,
+        account_id=account.pk,
         symbol=symbol,
         timeframe=timeframe,
         drawing_type=drawing_type,

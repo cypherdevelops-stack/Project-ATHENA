@@ -1,9 +1,28 @@
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils import timezone as django_timezone
 
 
-class BacktestingDrawing(models.Model):
+class ExternalOwnership(models.Model):
+    user_id = models.BigIntegerField(db_column='user_id', db_index=True)
+    account_id = models.BigIntegerField(db_column='account_id', db_index=True)
+
+    @property
+    def user(self):
+        return get_user_model().objects.using('default').get(pk=self.user_id)
+
+    @property
+    def account(self):
+        from backend.accounts.models import Account
+
+        return Account.objects.using('default').get(pk=self.account_id)
+
+    class Meta:
+        abstract = True
+
+
+class BacktestingDrawing(ExternalOwnership):
     class DrawingType(models.TextChoices):
         TRENDLINE = 'trendline', 'Trend line'
         HORIZONTAL = 'horizontal', 'Horizontal line'
@@ -15,8 +34,6 @@ class BacktestingDrawing(models.Model):
         LONG_POSITION = 'long_position', 'Long position'
         SHORT_POSITION = 'short_position', 'Short position'
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='backtesting_drawings')
-    account = models.ForeignKey('accounts.Account', on_delete=models.CASCADE, related_name='backtesting_drawings')
     symbol = models.CharField(max_length=128)
     timeframe = models.CharField(max_length=8)
     drawing_type = models.CharField(max_length=16, choices=DrawingType.choices)
@@ -26,9 +43,7 @@ class BacktestingDrawing(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
-class HistoricalCandle(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='backtesting_candles')
-    account = models.ForeignKey('accounts.Account', on_delete=models.CASCADE, related_name='backtesting_candles')
+class HistoricalCandle(ExternalOwnership):
     symbol = models.CharField(max_length=128)
     timeframe = models.CharField(max_length=8)
     timestamp = models.BigIntegerField()
@@ -47,9 +62,7 @@ class HistoricalCandle(models.Model):
         return {'time': self.timestamp, 'open': self.open, 'high': self.high, 'low': self.low, 'close': self.close, 'volume': self.volume}
 
 
-class HistoricalDataset(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='backtesting_datasets')
-    account = models.ForeignKey('accounts.Account', on_delete=models.CASCADE, related_name='backtesting_datasets')
+class HistoricalDataset(ExternalOwnership):
     source = models.CharField(max_length=32)
     symbol = models.CharField(max_length=128)
     timezone = models.CharField(max_length=64, default='UTC')
@@ -62,14 +75,12 @@ class HistoricalDataset(models.Model):
     created_at = models.DateTimeField(default=django_timezone.now)
 
 
-class ReplaySession(models.Model):
+class ReplaySession(ExternalOwnership):
     class Status(models.TextChoices):
         PAUSED = 'PAUSED', 'Paused'
         PLAYING = 'PLAYING', 'Playing'
         COMPLETE = 'COMPLETE', 'Complete'
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='backtesting_replays')
-    account = models.ForeignKey('accounts.Account', on_delete=models.CASCADE, related_name='backtesting_replays')
     dataset = models.ForeignKey('HistoricalDataset', null=True, blank=True, on_delete=models.SET_NULL, related_name='replays')
     symbol = models.CharField(max_length=128)
     timeframe = models.CharField(max_length=8)

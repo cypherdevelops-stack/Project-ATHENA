@@ -18,6 +18,8 @@ class ReconciliationError(ValueError):
 
 def reconcile_live_positions(*, account, mt5_module=None) -> dict:
     """Compare broker positions with ATHENA attempts and fail closed on uncertainty."""
+    if getattr(account, 'connection_method', 'BROKER') != 'BROKER':
+        return _failed(account, 'This account connection is not supported by the MT5 reconciliation adapter.')
     if mt5_module is None:
         try:
             import MetaTrader5 as mt5_module

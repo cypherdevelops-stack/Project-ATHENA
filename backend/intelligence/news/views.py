@@ -69,7 +69,7 @@ def current_news_view(request):
     if account is None:
         return JsonResponse({'status': 'UNAVAILABLE', 'reason': 'No enabled trading account is available.'}, status=422)
     symbol = (request.GET.get('symbol') or account.canonical_asset or account.broker_symbol or 'XAUUSD').upper()
-    snapshot = NewsIntelligenceSnapshot.objects.filter(account=account, symbol=symbol).first()
+    snapshot = NewsIntelligenceSnapshot.objects.filter(account_id=account.pk, symbol=symbol).first()
     if snapshot is None:
         return JsonResponse({'status': 'UNAVAILABLE', 'reason': 'No news snapshot is available.', 'symbol': symbol})
     return JsonResponse({'status': 'AVAILABLE', 'news': _snapshot_payload(snapshot)})
@@ -81,7 +81,7 @@ def news_snapshots_view(request):
     account = _account(request)
     if account is None:
         return JsonResponse({'snapshots': []})
-    query = NewsIntelligenceSnapshot.objects.filter(account=account)
+    query = NewsIntelligenceSnapshot.objects.filter(account_id=account.pk)
     symbol = request.GET.get('symbol')
     event_risk = request.GET.get('eventRisk')
     event_state = request.GET.get('eventState')
@@ -110,16 +110,26 @@ def news_reactions_view(request):
     account = _account(request)
     if account is None:
         return JsonResponse({'reactions': []})
-    query = NewsReactionObservation.objects.filter(news_snapshot__account=account)
+    account_snapshot_ids = list(
+        NewsIntelligenceSnapshot.objects.filter(account_id=account.pk).values_list('pk', flat=True)
+    )
+    query = NewsReactionObservation.objects.filter(news_snapshot_id__in=account_snapshot_ids)
     symbol = request.GET.get('symbol')
     state = request.GET.get('state')
     if symbol:
         query = query.filter(symbol=symbol.upper())
     if state:
         query = query.filter(reaction_state=state.upper())
+    reactions = list(query[:200])
+    snapshots = {
+        snapshot.pk: snapshot
+        for snapshot in NewsIntelligenceSnapshot.objects.filter(
+            pk__in={item.news_snapshot_id for item in reactions},
+        )
+    }
     return JsonResponse({'reactions': [{
         'id': item.pk,
-        'snapshotId': str(item.news_snapshot.snapshot_id),
+        'snapshotId': str(snapshots[item.news_snapshot_id].snapshot_id),
         'symbol': item.symbol,
         'observedAt': item.observed_at.isoformat(),
         'expectedDirection': item.expected_direction,
@@ -129,7 +139,7 @@ def news_reactions_view(request):
         'volatility': item.volatility,
         'spread': item.spread,
         'outcomeContext': item.outcome_context,
-    } for item in query[:200]]})
+    } for item in reactions if item.news_snapshot_id in snapshots]})
 
 
 @login_required
@@ -143,7 +153,7 @@ def adaptive_statistics_view(request):
     category = request.GET.get('category')
     regime = request.GET.get('regime')
     if symbol:
-        allowed = set(NewsIntelligenceSnapshot.objects.filter(account=account, symbol=symbol.upper()).values_list('symbol', flat=True))
+        allowed = set(NewsIntelligenceSnapshot.objects.filter(account_id=account.pk, symbol=symbol.upper()).values_list('symbol', flat=True))
         query = query.filter(symbol__in=allowed)
     if category:
         query = query.filter(category=category.upper())

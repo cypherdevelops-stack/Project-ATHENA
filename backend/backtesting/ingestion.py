@@ -77,11 +77,11 @@ def import_dataset(*, user, account, upload, source_timezone, timeframe, symbol,
                         'low': _number(row, 'low'), 'close': _number(row, 'close'),
                         'volume': int(_number(row, 'volume', 'tick_volume', default=0))})
     candles.sort(key=lambda candle: candle['time'])
-    dataset = HistoricalDataset.objects.create(user=user, account=account, source=source, symbol=symbol,
+    dataset = HistoricalDataset.objects.create(user_id=user.pk, account_id=account.pk, source=source, symbol=symbol,
         timezone=source_timezone, timeframe=timeframe, start_time=candles[0]['time'], end_time=candles[-1]['time'],
         version=version or '1', row_count=len(candles), metadata={'filename': upload.name, 'columns': columns})
     HistoricalCandle.objects.bulk_create([
-        HistoricalCandle(user=user, account=account, symbol=symbol, timeframe=timeframe, dataset=dataset,
+        HistoricalCandle(user_id=user.pk, account_id=account.pk, symbol=symbol, timeframe=timeframe, dataset=dataset,
                          timestamp=candle['time'], open=candle['open'], high=candle['high'], low=candle['low'],
                          close=candle['close'], volume=candle['volume']) for candle in candles
     ], batch_size=1000)

@@ -802,9 +802,11 @@ Before running ATHENA locally, ensure you have:
 - PostgreSQL-compatible database access
 - Supabase project credentials
 - MetaTrader 5 where broker execution is required
+- MetaAPI account ID and API token for MetaAPI-backed account validation
 - A compatible broker account for live/sandbox testing
 
 > **Important:** MetaTrader 5 integration is environment-dependent. The Python MT5 package is designed around the MetaTrader 5 terminal environment and should not be assumed to work in a Linux-only deployment such as a standard cloud web service.
+> MetaAPI connections validate account details during onboarding and store the API token encrypted. Live order execution and ongoing market-data monitoring for MetaAPI accounts are not yet supported.
 
 ---
 
@@ -988,10 +990,12 @@ Set the Render web service's **Start Command** to:
 bash build.sh
 ```
 
-The script installs frontend dependencies, builds the frontend, creates and
-applies Django migrations, collects static files, and starts the ASGI server.
-It runs at each service start, so migrations should be committed to the
-repository and the Render service should use a persistent production database.
+The script installs Python and frontend dependencies, builds the frontend,
+creates and applies Django migrations, collects static files, and starts the
+ASGI server. It runs at each service start, so migrations should be committed
+to the repository and the Render service should use a persistent production
+database. Do not set `bash build.sh` as Render's **Build Command**: it starts
+the server, which belongs in the **Start Command**.
 
 ## Python Tests
 

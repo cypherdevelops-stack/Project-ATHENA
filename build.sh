@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+python -m pip install -r requirements.txt
 npm ci --prefix frontend
 npm run build --prefix frontend
 

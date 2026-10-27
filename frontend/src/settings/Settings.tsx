@@ -13,6 +13,8 @@ type AccountDraft = {
   login: string;
   password: string;
   server: string;
+  connectionMethod: 'BROKER' | 'METAAPI';
+  apiAccountId?: string;
 };
 
 export function Settings() {
@@ -21,6 +23,7 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState('Account Management');
   const [theme, setThemeValue] = useState<Theme>(() => getTheme());
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [connectionMethod, setConnectionMethod] = useState<AccountDraft['connectionMethod']>('BROKER');
   const [modalStep, setModalStep] = useState<AccountWizardStep>(1);
   const [handshakeComplete, setHandshakeComplete] = useState(false);
   const [handshakeLoading, setHandshakeLoading] = useState(false);
@@ -128,6 +131,7 @@ export function Settings() {
 
   function closeAccountModal() {
     setShowCreateForm(false);
+    setConnectionMethod('BROKER');
     setModalStep(1);
     setHandshakeComplete(false);
     setHandshakeLoading(false);
@@ -140,15 +144,37 @@ export function Settings() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const server = String(data.get('server') ?? '').toLowerCase();
+    const connectionMethod = String(data.get('connectionMethod') ?? 'BROKER') as AccountDraft['connectionMethod'];
 
     const draft = {
       accountNickname: String(data.get('accountNickname') ?? ''),
       platform: String(data.get('platform') ?? 'MT5'),
-      login: String(data.get('login') ?? ''),
-      password: String(data.get('password') ?? ''),
+      login: connectionMethod === 'METAAPI' ? String(data.get('apiAccountId') ?? '') : String(data.get('login') ?? ''),
+      password: String(data.get(connectionMethod === 'METAAPI' ? 'apiToken' : 'password') ?? ''),
       server: String(data.get('server') ?? ''),
+      connectionMethod,
+      ...(connectionMethod === 'METAAPI' ? { apiAccountId: String(data.get('apiAccountId') ?? '') } : {}),
     };
     setAccountDraft(draft);
+
+    if (connectionMethod === 'METAAPI') {
+      setModalStep(2);
+      setHandshakeLoading(true);
+      setError(null);
+      authService.discoverAccount(draft)
+        .then((response) => {
+          setDiscovery(response.discovery);
+          setAccountDraft((current) => current ? {
+            ...current,
+            platform: response.discovery.platform,
+            login: response.discovery.login,
+            server: response.discovery.server,
+          } : current);
+        })
+        .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Unable to discover account.'))
+        .finally(() => setHandshakeLoading(false));
+      return;
+    }
 
     if (server.includes('demo')) {
       setModalStep(2);
@@ -229,7 +255,7 @@ export function Settings() {
             <article className={`account-card ${account?.id === availableAccount.id ? 'account-card-active' : ''}`} onClick={() => setAccount(availableAccount)} onKeyDown={(event) => handleAccountCardKeyDown(event, availableAccount)} tabIndex={0} key={availableAccount.id}>
               <span className="account-card-icon"><ShieldCheck size={20} aria-hidden="true" /></span>
               <strong>{availableAccount.displayName}</strong>
-              <span>{availableAccount.platform} / Login {availableAccount.login}</span>
+              <span>{availableAccount.platform} / Login {availableAccount.login}{availableAccount.connectionMethod === 'METAAPI' ? ' / MetaAPI' : ''}</span>
               <small>{availableAccount.server}</small>
               <div className="account-card-actions">
                 <button type="button" className={`account-trade-toggle ${availableAccount.enabled ? 'account-trade-toggle-on' : ''}`} onClick={(event) => handleAccountToggle(event, availableAccount)} disabled={updatingAccountId === availableAccount.id} aria-pressed={availableAccount.enabled} title={`${availableAccount.enabled ? 'Disable' : 'Enable'} trading for ${availableAccount.displayName}`}>
@@ -252,10 +278,17 @@ export function Settings() {
           {modalStep === 1 && <>
             <p className="wizard-lead">Let's connect your trading account.</p>
             <label>Account nickname<input name="accountNickname" required placeholder="Primary gold account" /></label>
-            <label>Platform<select name="platform" defaultValue="MT5"><option value="MT4">MT4</option><option value="MT5">MT5</option><option value="CTRADER">cTrader</option><option value="TRADINGVIEW">TradingView</option></select></label>
-            <label>Login<input name="login" required autoComplete="username" /></label>
-            <label>Password<input name="password" type="password" required autoComplete="current-password" /></label>
-            <label>Server<input name="server" required placeholder="Demo server or live server" /></label>
+            <label>Connection method<select name="connectionMethod" value={connectionMethod} onChange={(event) => setConnectionMethod(event.target.value as AccountDraft['connectionMethod'])}><option value="BROKER">Broker login</option><option value="METAAPI">MetaAPI</option></select></label>
+            {connectionMethod === 'BROKER' && <label>Platform<select name="platform" defaultValue="MT5"><option value="MT4">MT4</option><option value="MT5">MT5</option><option value="CTRADER">cTrader</option><option value="TRADINGVIEW">TradingView</option></select></label>}
+            {connectionMethod === 'METAAPI' ? <>
+              <label>MetaAPI account ID<input name="apiAccountId" required autoComplete="off" /></label>
+              <label>MetaAPI API token<input name="apiToken" type="password" required autoComplete="new-password" /></label>
+              <p className="wizard-lead">MetaAPI must be deployed. ATHENA will verify balance, equity, leverage, trading permission, open positions, and available symbols before onboarding.</p>
+            </> : <>
+              <label>Login<input name="login" required autoComplete="username" /></label>
+              <label>Password<input name="password" type="password" required autoComplete="current-password" /></label>
+              <label>Server<input name="server" required placeholder="Demo server or live server" /></label>
+            </>}
             {error && <p role="alert">{error}</p>}
             <div><button type="submit" className="add-account-button">Connect & Discover</button><button type="button" className="form-cancel" onClick={closeAccountModal}>Cancel</button></div>
           </>}

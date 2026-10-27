@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import AdaptiveNewsStatistic, NewsIntelligenceSnapshot
+from .models import AdaptiveNewsStatistic, NewsIntelligenceSnapshot, NewsReactionObservation
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,9 @@ def get_adaptive_advice(*, symbol: str, category: str, regime: str, source_class
 
 def record_reaction_outcome(*, snapshot: NewsIntelligenceSnapshot, regime: str = 'UNKNOWN') -> list[AdaptiveNewsStatistic]:
     """Update statistics only from a completed reaction observation."""
-    observation = snapshot.reaction_observations.order_by('-observed_at').first()
+    observation = NewsReactionObservation.objects.filter(
+        news_snapshot_id=snapshot.pk,
+    ).order_by('-observed_at').first()
     if observation is None or observation.reaction_state not in {'CONFIRMED', 'CONTRARY'}:
         return []
     events = snapshot.events or [{}]

@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from dotenv import load_dotenv
 
@@ -105,34 +106,94 @@ CHANNEL_LAYERS = {
 
 
 # Database
-# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+# https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-DB_ENGINE = os.getenv('DB_ENGINE', 'django.db.backends.sqlite3')
 
-if DB_ENGINE == 'django.db.backends.sqlite3':
+def _database_from_url(url: str) -> dict:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {'postgres', 'postgresql'} or not parsed.hostname:
+        raise ValueError('ATHENA database URLs must be valid PostgreSQL connection URLs.')
+    query = parse_qs(parsed.query)
+    options = {
+        key: values[-1]
+        for key, values in query.items()
+        if key in {'sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'application_name'}
+    }
+    options.setdefault('sslmode', os.getenv('DB_SSLMODE', 'require'))
+    options['connect_timeout'] = int(os.getenv('DB_CONNECT_TIMEOUT', '10'))
+    return {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': unquote(parsed.path.lstrip('/')),
+        'USER': unquote(parsed.username or ''),
+        'PASSWORD': unquote(parsed.password or ''),
+        'HOST': parsed.hostname,
+        'PORT': str(parsed.port or 5432),
+        'ATOMIC_REQUESTS': True,
+        'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+        'OPTIONS': options,
+    }
+
+
+def _required_database_url(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    raise ValueError(
+        f'Missing database URL. Set one of: {", ".join(names)}.'
+    )
+
+
+_postgres_env_names = (
+    'ATHENA_CORE_PROD_DATABASE_URL',
+    'athena-core-prod_DATABASE_URL',
+    'athena-core-prodDATABASE_URL',
+    'ATHENA_MARKET_INTELLIGENCE_DATABASE_URL',
+    'athena-market-intelligence_DATABASE_URL',
+    'athena-market-intelligenceDATABASE_URL',
+    'ATHENA_BACKTESTING_LAB_DATABASE_URL',
+    'athena-backtesting-lab_DATABASE_URL',
+    'ATHENA_LEARNING_MEMORY_DATABASE_URL',
+    'athena-learning-memory_DATABASE_URL',
+)
+_db_engine = os.getenv('DB_ENGINE')
+if _db_engine is None:
+    _db_engine = (
+        'django.db.backends.postgresql'
+        if any(os.getenv(name) for name in _postgres_env_names)
+        else 'django.db.backends.sqlite3'
+    )
+
+if _db_engine == 'django.db.backends.sqlite3':
     DATABASES = {
         'default': {
-            'ENGINE': DB_ENGINE,
+            'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / os.getenv('SQLITE_NAME', 'db.sqlite3'),
         }
     }
 else:
     DATABASES = {
-        'default': {
-            'ENGINE': DB_ENGINE,
-            'NAME': os.getenv('DB_NAME', 'postgres'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST', ''),
-            'PORT': os.getenv('DB_PORT', '5432'),
-            'ATOMIC_REQUESTS': True,
-            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
-            'OPTIONS': {
-                'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '10')),
-                'sslmode': os.getenv('DB_SSLMODE', 'require'),
-            },
-        }
+        'default': _database_from_url(_required_database_url(
+            'ATHENA_CORE_PROD_DATABASE_URL',
+            'athena-core-prod_DATABASE_URL',
+            'athena-core-prodDATABASE_URL',
+        )),
+        'market_intelligence': _database_from_url(_required_database_url(
+            'ATHENA_MARKET_INTELLIGENCE_DATABASE_URL',
+            'athena-market-intelligence_DATABASE_URL',
+            'athena-market-intelligenceDATABASE_URL',
+        )),
+        'backtesting': _database_from_url(_required_database_url(
+            'ATHENA_BACKTESTING_LAB_DATABASE_URL',
+            'athena-backtesting-lab_DATABASE_URL',
+        )),
+        'learning_memory': _database_from_url(_required_database_url(
+            'ATHENA_LEARNING_MEMORY_DATABASE_URL',
+            'athena-learning-memory_DATABASE_URL',
+        )),
     }
+
+DATABASE_ROUTERS = ['backend.database_router.AthenaDatabaseRouter']
 
 
 # Password validation

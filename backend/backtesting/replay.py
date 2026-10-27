@@ -14,7 +14,12 @@ REPLAY_TIMEFRAMES = ('M1', 'M5', 'H1')
 
 def session_candles(session, timeframe=None):
     selected = timeframe or session.timeframe
-    query = HistoricalCandle.objects.filter(user=session.user, account=session.account, symbol=session.symbol, timeframe=selected)
+    query = HistoricalCandle.objects.filter(
+        user_id=session.user_id,
+        account_id=session.account_id,
+        symbol=session.symbol,
+        timeframe=selected,
+    )
     if session.dataset and selected == session.dataset.timeframe:
         query = query.filter(dataset=session.dataset)
     if session.start_time is not None:
@@ -94,7 +99,7 @@ def create_replay(*, user, account, timeframe, candle_count, slippage=0.0, commi
         symbol = account.broker_symbol
         for selected_timeframe, candles in bundle.candles.items():
             HistoricalCandle.objects.bulk_create([
-                HistoricalCandle(user=user, account=account, symbol=symbol, timeframe=selected_timeframe,
+                HistoricalCandle(user_id=user.pk, account_id=account.pk, symbol=symbol, timeframe=selected_timeframe,
                                  timestamp=candle['time'], open=candle['open'], high=candle['high'],
                                  low=candle['low'], close=candle['close'], volume=candle['volume'])
                 for candle in candles
@@ -104,7 +109,9 @@ def create_replay(*, user, account, timeframe, candle_count, slippage=0.0, commi
         timeframe = dataset.timeframe
         start_time = dataset.start_time if start_time is None else max(start_time, dataset.start_time)
         end_time = dataset.end_time if end_time is None else min(end_time, dataset.end_time)
-    probe = HistoricalCandle.objects.filter(user=user, account=account, symbol=symbol, timeframe=timeframe)
+    probe = HistoricalCandle.objects.filter(
+        user_id=user.pk, account_id=account.pk, symbol=symbol, timeframe=timeframe,
+    )
     if dataset:
         probe = probe.filter(dataset=dataset)
     if start_time is not None:
@@ -114,7 +121,7 @@ def create_replay(*, user, account, timeframe, candle_count, slippage=0.0, commi
     count = probe.count()
     if count == 0:
         raise ValueError('The selected dataset has no candles in the requested date range.')
-    return ReplaySession.objects.create(user=user, account=account, dataset=dataset, symbol=symbol,
+    return ReplaySession.objects.create(user_id=user.pk, account_id=account.pk, dataset=dataset, symbol=symbol,
         timeframe=timeframe, start_time=start_time, end_time=end_time, cursor=min(50, count),
         slippage=max(0.0, slippage), commission=max(0.0, commission))
 

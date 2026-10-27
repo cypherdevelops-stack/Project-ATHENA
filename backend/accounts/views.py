@@ -13,6 +13,7 @@ from .monitor import normalize_terminal_path
 from .monitor import terminal_process_running
 from backend.execution.paper_engine import PaperTradeError, build_paper_trade
 from .handshake import discover_demo_account, verify_broker_handshake
+from .metaapi import MetaApiHandshakeError, verify_metaapi_handshake
 from .models import Account, AccountInstrumentCapability
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ def _account_payload(account):
         'id': account.pk,
         'displayName': account.display_name,
         'platform': account.platform,
+        'connectionMethod': account.connection_method,
         'login': account.login,
         'broker': account.broker,
         'server': account.server,
@@ -164,39 +166,67 @@ def create_account_view(request):
 
     display_name = str(body.get('accountNickname', body.get('displayName', ''))).strip()
     platform = str(body.get('platform', 'MT5')).strip()
+    connection_method = str(body.get('connectionMethod', 'BROKER')).strip().upper()
     login = str(body.get('login', '')).strip()
     server = str(body.get('server', '')).strip()
     password = body.get('password', '')
-    if not display_name or not platform or not login or not server or not isinstance(password, str) or not password:
-        return JsonResponse({'detail': 'Account nickname, platform, login, password, and server are required.'}, status=400)
-    if platform not in {'MT4', 'MT5', 'CTRADER', 'TRADINGVIEW'}:
-        return JsonResponse({'detail': 'Select a supported trading platform.'}, status=400)
-    if not display_name:
-        return JsonResponse({'detail': 'Account name is required.'}, status=400)
+    if not display_name or not isinstance(password, str) or not password:
+        return JsonResponse({'detail': 'Account nickname and connection credentials are required.'}, status=400)
+    if connection_method == 'METAAPI':
+        external_account_id = str(body.get('apiAccountId', body.get('externalAccountId', ''))).strip()
+        try:
+            verified = verify_metaapi_handshake(external_account_id, password)
+        except MetaApiHandshakeError as error:
+            return JsonResponse({'detail': str(error)}, status=422)
+        platform = verified['platform']
+        login = verified['account_id']
+        server = verified['server']
+        broker = verified['broker']
+    elif connection_method == 'BROKER':
+        if not platform or not login or not server:
+            return JsonResponse({'detail': 'Platform, login, and server are required for broker login.'}, status=400)
+        if platform not in {'MT4', 'MT5', 'CTRADER', 'TRADINGVIEW'}:
+            return JsonResponse({'detail': 'Select a supported trading platform.'}, status=400)
+        external_account_id = ''
+        verified = {}
+        broker = platform
+    else:
+        return JsonResponse({'detail': 'Select a supported connection method.'}, status=400)
 
     discovery = body.get('marketDiscovery', {}) if isinstance(body.get('marketDiscovery', {}), dict) else {}
+    if connection_method == 'METAAPI':
+        discovery = verified['market_discovery']
     allowed_instruments = body.get('allowedInstruments')
     if not isinstance(allowed_instruments, list):
         canonical_asset = str(body.get('canonicalAsset', '')).strip()
         allowed_instruments = [canonical_asset] if canonical_asset else []
+    if connection_method == 'METAAPI' and verified['market_discovery']['canonicalAsset']:
+        canonical_asset = verified['market_discovery']['canonicalAsset']
+        allowed_instruments = [verified['market_discovery']['brokerSymbol']] if verified['market_discovery']['brokerSymbol'] else []
+    else:
+        canonical_asset = str(body.get('canonicalAsset', '')).strip()
     account = Account.objects.create(
         user=request.user,
         display_name=display_name,
         platform=platform,
+        connection_method=connection_method,
+        external_account_id=external_account_id,
         login=login,
-        broker=platform,
+        broker=broker,
         server=server,
         terminal_path=normalize_terminal_path(body.get('terminalPath', '')),
         password_encrypted=encrypt_password(password),
-        canonical_asset=str(body.get('canonicalAsset', '')).strip(),
-        broker_symbol=str(body.get('brokerSymbol', '')).strip(),
+        canonical_asset=canonical_asset,
+        broker_symbol=verified['market_discovery']['brokerSymbol'] if connection_method == 'METAAPI' else str(body.get('brokerSymbol', '')).strip(),
         market_discovery=discovery,
         allowed_instruments=allowed_instruments,
-        balance=body.get('balance', 0) or 0,
-        base_currency=str(body.get('currency', 'USD')).strip()[:3] or 'USD',
-        account_mode=str(body.get('accountMode', '')).strip(),
-        trade_allowed=bool(body.get('tradeAllowed', False)),
-        terminal_connected=bool(body.get('terminalConnected', False)),
+        balance=verified.get('balance', body.get('balance', 0)) or 0,
+        equity=verified.get('equity', body.get('equity', 0)) or 0,
+        leverage=verified.get('leverage', body.get('leverage', 100)),
+        base_currency=str(verified.get('currency', body.get('currency', 'USD'))).strip()[:3] or 'USD',
+        account_mode=str(verified.get('account_mode', body.get('accountMode', ''))).strip(),
+        trade_allowed=verified.get('trade_allowed', bool(body.get('tradeAllowed', False))),
+        terminal_connected=connection_method == 'METAAPI' or bool(body.get('terminalConnected', False)),
         last_handshake_at=timezone.now() if discovery else None,
         handshake_status='SUCCESS' if discovery else '',
     )
@@ -243,6 +273,46 @@ def discover_account_view(request):
         body = json.loads(request.body or '{}')
     except JSONDecodeError:
         return JsonResponse({'detail': 'Request body must be valid JSON.'}, status=400)
+
+    connection_method = str(body.get('connectionMethod', 'BROKER')).strip().upper()
+    if connection_method == 'METAAPI':
+        account_id = str(body.get('apiAccountId', '')).strip()
+        token = body.get('password', '')
+        if not account_id or not isinstance(token, str) or not token:
+            return JsonResponse({'detail': 'MetaAPI account ID and API token are required.'}, status=400)
+        try:
+            result = verify_metaapi_handshake(account_id, token)
+        except MetaApiHandshakeError as error:
+            return JsonResponse({'status': 'FAILED', 'reason': str(error)}, status=422)
+        discovery = result['market_discovery']
+        return JsonResponse({
+            'status': 'SUCCESS',
+            'stage': 'USER_POLICY_CONFIGURATION',
+            'completedStages': [
+                'ACCOUNT_ONBOARDING', 'AUTHENTICATE_ACCOUNT', 'VERIFY_IDENTITY',
+                'DISCOVER_ACCOUNT', 'DISCOVER_MARKET', 'DISCOVER_EXECUTION',
+                'DISCOVER_EXPOSURE', 'VALIDATE', 'BUILD_ACCOUNT_PROFILE',
+            ],
+            'discovery': {
+                'broker': result['broker'],
+                'server': result['server'],
+                'login': result['account_id'],
+                'balance': result['balance'],
+                'equity': result['equity'],
+                'currency': result['currency'],
+                'leverage': result['leverage'],
+                'accountMode': result['account_mode'],
+                'platform': result['platform'],
+                'terminalConnected': True,
+                'tradeAllowed': result['trade_allowed'],
+                'marketData': discovery['marketData'],
+                'canonicalAsset': discovery['canonicalAsset'],
+                'brokerSymbol': discovery['brokerSymbol'],
+                'marketDiscovery': discovery,
+                'existingPositions': result['existing_positions'],
+                'executionValidation': 'READY',
+            },
+        })
 
     platform = str(body.get('platform', '')).strip()
     login = str(body.get('login', '')).strip()

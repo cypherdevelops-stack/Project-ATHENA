@@ -4,6 +4,7 @@ export type AccountProfile = {
   id: number;
   displayName: string;
   platform: string;
+  connectionMethod: 'BROKER' | 'METAAPI';
   login: string;
   broker: string;
   server: string;
@@ -81,6 +82,7 @@ export type AccountDiscovery = {
   server: string;
   login: string;
   balance: string;
+  equity?: string;
   currency: string;
   leverage: number;
   accountMode: string;
@@ -409,12 +411,12 @@ export const authService = {
     request<JournalSession>('/journal/sessions/create', { method: 'POST', body: JSON.stringify(payload) }),
   createJournalEvent: (sessionId: number, payload: { eventType: string; body: string }) =>
     request<JournalEvent>(`/journal/sessions/${sessionId}/events`, { method: 'POST', body: JSON.stringify(payload) }),
-  createAccount: (account: { accountNickname: string; platform: string; login: string; password: string; server: string; canonicalAsset?: string; brokerSymbol?: string; marketDiscovery?: MarketDiscovery; allowedInstruments?: string[] }) =>
+  createAccount: (account: { accountNickname: string; platform: string; login: string; password: string; server: string; connectionMethod?: 'BROKER' | 'METAAPI'; apiAccountId?: string; canonicalAsset?: string; brokerSymbol?: string; marketDiscovery?: MarketDiscovery; allowedInstruments?: string[] }) =>
     request<AccountProfile>('/account/create', {
       method: 'POST',
       body: JSON.stringify(account),
     }),
-  discoverAccount: (account: { platform: string; login: string; password: string; server: string }) =>
+  discoverAccount: (account: { platform: string; login: string; password: string; server: string; connectionMethod?: 'BROKER' | 'METAAPI'; apiAccountId?: string }) =>
     request<DiscoveryResponse>('/account/onboarding/discover', {
       method: 'POST',
       body: JSON.stringify(account),

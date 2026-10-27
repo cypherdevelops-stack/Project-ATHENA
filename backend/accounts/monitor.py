@@ -55,7 +55,7 @@ def terminal_process_running() -> bool:
 
 
 def check_account(account: Account) -> None:
-    if not account.enabled:
+    if not account.enabled or account.connection_method != 'BROKER':
         return
     mt5 = _load_mt5()
     if mt5 is None:
@@ -133,7 +133,7 @@ def monitor_loop() -> None:
     while True:
         close_old_connections()
         try:
-            for account in Account.objects.filter(enabled=True).iterator():
+            for account in Account.objects.filter(enabled=True, connection_method='BROKER').iterator():
                 check_account(account)
         except OperationalError:
             close_old_connections()

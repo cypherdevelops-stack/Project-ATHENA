@@ -11,6 +11,12 @@ class Account(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='trading_accounts')
     display_name = models.CharField(max_length=120, default='Primary account')
     platform = models.CharField(max_length=20, default='MT5')
+    connection_method = models.CharField(
+        max_length=16,
+        choices=[('BROKER', 'Broker login'), ('METAAPI', 'MetaAPI')],
+        default='BROKER',
+    )
+    external_account_id = models.CharField(max_length=120, blank=True)
     login = models.CharField(max_length=120, blank=True)
     broker = models.CharField(max_length=120, blank=True)
     server = models.CharField(max_length=120, blank=True)

@@ -36,9 +36,11 @@ def _update_reaction(*, news_snapshot, volatility: str) -> None:
         spread=post.spread,
         volatility=volatility,
     )
-    observation = news_snapshot.reaction_observations.order_by('-observed_at').first()
+    observation = NewsReactionObservation.objects.filter(
+        news_snapshot_id=news_snapshot.pk,
+    ).order_by('-observed_at').first()
     if observation is None:
-        observation = NewsReactionObservation(news_snapshot=news_snapshot, symbol=news_snapshot.symbol)
+        observation = NewsReactionObservation(news_snapshot_id=news_snapshot.pk, symbol=news_snapshot.symbol)
     observation.expected_direction = reaction.expected_direction
     observation.actual_direction = reaction.actual_direction
     observation.reaction_state = reaction.state

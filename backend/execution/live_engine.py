@@ -27,6 +27,8 @@ def _policy_allows(account) -> bool:
 
 
 def send_live_order(*, account, setup: dict, requested_price: float | None = None, max_slippage: float = 0.0, idempotency_key: str | None = None, mt5_module=None, required_mode: str = 'CONFIRMATION_REQUIRED') -> dict:
+    if getattr(account, 'connection_method', 'BROKER') != 'BROKER':
+        raise LiveExecutionError('This account connection is not supported by the MT5 live execution adapter.')
     if not _enabled():
         raise LiveExecutionError('Live execution is disabled by server policy.')
     if not idempotency_key:

@@ -19,6 +19,13 @@ def candidates_view(request):
         account = Account.objects.filter(user=request.user, is_default=True, enabled=True).first() or Account.objects.filter(user=request.user, enabled=True).first()
     if account is None or not account.broker_symbol:
         return JsonResponse({'status': 'BLOCKED', 'reasonCodes': ['BROKER_SYMBOL_UNAVAILABLE'], 'candidates': []}, status=422)
+    if account.connection_method != 'BROKER':
+        return JsonResponse({
+            'status': 'BLOCKED',
+            'reasonCodes': ['ACCOUNT_CONNECTION_UNSUPPORTED'],
+            'reason': 'Scalping market data is not yet available for API-connected accounts.',
+            'candidates': [],
+        }, status=422)
 
     initialized = False
     try:

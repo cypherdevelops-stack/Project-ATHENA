@@ -14,8 +14,7 @@ def persist_news_snapshot(*, account, analysis: dict[str, Any], orchestration_sn
     instrument = (news.get('instruments') or {}).get(symbol, {})
     reaction = analysis.get('newsReaction') or {}
     snapshot = NewsIntelligenceSnapshot.objects.create(
-        account=account,
-        orchestration_snapshot=orchestration_snapshot,
+        account_id=account.pk,
         decision_id=orchestration_snapshot.decision_id if orchestration_snapshot else None,
         symbol=symbol,
         provider_available=bool(news.get('provider_available', False)),
@@ -36,7 +35,7 @@ def persist_news_snapshot(*, account, analysis: dict[str, Any], orchestration_sn
     )
     if reaction:
         observation = NewsReactionObservation.objects.create(
-            news_snapshot=snapshot,
+            news_snapshot_id=snapshot.pk,
             symbol=symbol,
             expected_direction=str(reaction.get('expected_direction', 'UNKNOWN')),
             actual_direction=str(reaction.get('actual_direction', 'UNKNOWN')),
@@ -49,7 +48,7 @@ def persist_news_snapshot(*, account, analysis: dict[str, Any], orchestration_sn
         from .adaptive import record_reaction_outcome
         record_reaction_outcome(snapshot=snapshot, regime=str((analysis.get('regime') or {}).get('regime', 'UNKNOWN')))
     NewsAMEFRecord.objects.create(
-        news_snapshot=snapshot,
+        news_snapshot_id=snapshot.pk,
         event_context={'events': snapshot.events},
         asset_context={'symbol': snapshot.symbol, 'fundamentalBias': snapshot.fundamental_bias, 'impactScore': snapshot.impact_score},
         technical_context={'alignment': snapshot.technical_alignment, 'conflict': snapshot.technical_conflict},

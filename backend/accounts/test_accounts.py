@@ -121,3 +121,99 @@ class AccountCredentialPersistenceTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['guardian']['state'], 'DISABLED')
+
+
+class MetaApiAccountOnboardingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='metaapi@example.com', password='Strong-password-123')
+        self.client.force_login(self.user)
+        self.verified_account = {
+            'account_id': '123456',
+            'external_account_id': 'metaapi-account-id',
+            'platform': 'MT5',
+            'broker': 'Example Broker',
+            'server': 'Example-Demo',
+            'balance': '1200.50',
+            'equity': '1198.25',
+            'leverage': 100,
+            'currency': 'USD',
+            'account_mode': 'HEDGED',
+            'trade_allowed': True,
+            'market_discovery': {
+                'canonicalAsset': 'XAUUSD',
+                'brokerSymbol': 'XAUUSD.a',
+                'symbols': [{
+                    'name': 'XAUUSD.a',
+                    'description': 'Gold',
+                    'visible': True,
+                    'selectable': True,
+                    'tradeMode': None,
+                    'confidence': 0.9,
+                }],
+                'assetMatches': ['XAUUSD.a'],
+                'marketData': 'HEALTHY',
+            },
+            'existing_positions': 2,
+        }
+
+    def test_api_discovery_returns_server_verified_account_facts(self):
+        with patch('backend.accounts.views.verify_metaapi_handshake', return_value=self.verified_account) as verify:
+            response = self.client.post('/api/account/onboarding/discover', data=json.dumps({
+                'connectionMethod': 'METAAPI',
+                'apiAccountId': 'metaapi-account-id',
+                'password': 'private-metaapi-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        discovery = response.json()['discovery']
+        self.assertEqual(discovery['balance'], '1200.50')
+        self.assertEqual(discovery['equity'], '1198.25')
+        self.assertEqual(discovery['leverage'], 100)
+        self.assertEqual(discovery['existingPositions'], 2)
+        verify.assert_called_once_with('metaapi-account-id', 'private-metaapi-token')
+
+    def test_api_account_is_revalidated_and_credentials_are_encrypted_on_create(self):
+        with patch('backend.accounts.views.verify_metaapi_handshake', return_value=self.verified_account), patch(
+            'backend.accounts.views.encrypt_password',
+            return_value='encrypted-metaapi-token',
+        ):
+            response = self.client.post('/api/account/create', data=json.dumps({
+                'accountNickname': 'MetaAPI account',
+                'connectionMethod': 'METAAPI',
+                'apiAccountId': 'metaapi-account-id',
+                'password': 'private-metaapi-token',
+                'platform': 'METAAPI',
+                'login': 'untrusted-browser-login',
+                'server': 'untrusted-browser-server',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotIn('private-metaapi-token', response.content.decode())
+        account = Account.objects.get(user=self.user)
+        self.assertEqual(account.connection_method, 'METAAPI')
+        self.assertEqual(account.external_account_id, 'metaapi-account-id')
+        self.assertEqual(account.platform, 'MT5')
+        self.assertEqual(account.login, '123456')
+        self.assertEqual(account.server, 'Example-Demo')
+        self.assertEqual(account.password_encrypted, 'encrypted-metaapi-token')
+        self.assertEqual(str(account.balance), '1200.50')
+        self.assertEqual(str(account.equity), '1198.25')
+        self.assertEqual(account.leverage, 100)
+        self.assertEqual(account.broker_symbol, 'XAUUSD.a')
+
+    def test_metaapi_credentials_that_fail_validation_do_not_create_an_account(self):
+        from .metaapi import MetaApiHandshakeError
+
+        with patch(
+            'backend.accounts.views.verify_metaapi_handshake',
+            side_effect=MetaApiHandshakeError('Deploy the MetaAPI account first.'),
+        ):
+            response = self.client.post('/api/account/create', data=json.dumps({
+                'accountNickname': 'Unverified MetaAPI account',
+                'connectionMethod': 'METAAPI',
+                'apiAccountId': 'metaapi-account-id',
+                'password': 'private-metaapi-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(Account.objects.filter(user=self.user).count(), 0)
