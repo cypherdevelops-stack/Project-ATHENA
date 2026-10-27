@@ -54,7 +54,7 @@ class HistoricalCandle(ExternalOwnership):
     dataset = models.ForeignKey('HistoricalDataset', null=True, blank=True, on_delete=models.CASCADE, related_name='candles')
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=('account', 'symbol', 'timeframe', 'timestamp', 'dataset'), name='unique_historical_candle')]
+        constraints = [models.UniqueConstraint(fields=('account_id', 'symbol', 'timeframe', 'timestamp', 'dataset'), name='unique_historical_candle')]
         ordering = ('timestamp',)
 
     def as_dict(self):

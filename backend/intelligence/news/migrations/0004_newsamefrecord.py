@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                 ('reaction_context', models.JSONField(default=dict)),
                 ('execution_context', models.JSONField(default=dict)),
                 ('trade_outcome', models.JSONField(default=dict)),
-                ('news_snapshot', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='amef_record', to='news_intelligence.newsintelligencesnapshot')),
+                ('news_snapshot', models.OneToOneField(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='amef_record', to='news_intelligence.newsintelligencesnapshot')),
             ],
             options={'ordering': ['-created_at']},
         ),

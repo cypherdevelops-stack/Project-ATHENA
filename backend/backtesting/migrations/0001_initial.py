@@ -19,8 +19,8 @@ class Migration(migrations.Migration):
                 ('end', models.JSONField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('account', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_drawings', to='accounts.account')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_drawings', to=settings.AUTH_USER_MODEL)),
+                ('account', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_drawings', to='accounts.account')),
+                ('user', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_drawings', to=settings.AUTH_USER_MODEL)),
             ],
         ),
     ]

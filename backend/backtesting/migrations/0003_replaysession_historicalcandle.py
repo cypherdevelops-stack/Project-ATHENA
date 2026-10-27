@@ -28,8 +28,8 @@ class Migration(migrations.Migration):
                 ('commission', models.FloatField(default=0.0)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('account', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_replays', to='accounts.account')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_replays', to=settings.AUTH_USER_MODEL)),
+                ('account', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_replays', to='accounts.account')),
+                ('user', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_replays', to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -44,8 +44,8 @@ class Migration(migrations.Migration):
                 ('low', models.FloatField()),
                 ('close', models.FloatField()),
                 ('volume', models.BigIntegerField(default=0)),
-                ('account', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_candles', to='accounts.account')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_candles', to=settings.AUTH_USER_MODEL)),
+                ('account', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_candles', to='accounts.account')),
+                ('user', models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_candles', to=settings.AUTH_USER_MODEL)),
             ],
             options={
                 'ordering': ('timestamp',),

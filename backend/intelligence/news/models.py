@@ -33,7 +33,7 @@ class NewsIntelligenceSnapshot(models.Model):
     class Meta:
         ordering = ['-captured_at']
         indexes = [
-            models.Index(fields=['account', '-captured_at']),
+            models.Index(fields=['account_id', '-captured_at']),
             models.Index(fields=['symbol', '-captured_at']),
             models.Index(fields=['event_risk', '-captured_at']),
         ]

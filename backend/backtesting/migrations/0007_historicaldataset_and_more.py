@@ -48,12 +48,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='historicaldataset',
             name='account',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_datasets', to='accounts.account'),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_datasets', to='accounts.account'),
         ),
         migrations.AddField(
             model_name='historicaldataset',
             name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_datasets', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(db_constraint=False, on_delete=django.db.models.deletion.CASCADE, related_name='backtesting_datasets', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddField(
             model_name='historicalcandle',
