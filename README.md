@@ -1008,11 +1008,12 @@ bash build.sh
 ```
 
 The script installs Python and frontend dependencies, builds the frontend,
-creates and applies Django migrations, collects static files, and starts the
-ASGI server. It runs at each service start, so migrations should be committed
-to the repository and the Render service should use a persistent production
-database. Do not set `bash build.sh` as Render's **Build Command**: it starts
-the server, which belongs in the **Start Command**.
+applies migrations to the configured databases, collects static files, and
+starts the ASGI server. It runs at each service start, so create migrations
+during development and commit them to the repository; the Render service
+should use persistent production databases. Do not set `bash build.sh` as
+Render's **Build Command**: it starts the server, which belongs in the
+**Start Command**.
 
 ## Python Tests
 

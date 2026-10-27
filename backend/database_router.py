@@ -26,7 +26,11 @@ class AthenaDatabaseRouter:
         return self.database_for(model)
 
     def allow_relation(self, obj1, obj2, **hints):
-        return obj1._state.db == obj2._state.db
+        return (
+            obj1._state.db is None
+            or obj2._state.db is None
+            or obj1._state.db == obj2._state.db
+        )
 
     def allow_migrate(self, db, app_label, model_name=None, **hints):
         if len(settings.DATABASES) == 1:

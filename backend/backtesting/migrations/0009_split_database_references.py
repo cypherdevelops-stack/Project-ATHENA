@@ -7,6 +7,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RemoveConstraint(
+            model_name='historicalcandle',
+            name='unique_historical_candle',
+        ),
         migrations.RenameField(
             model_name='backtestingdrawing',
             old_name='user',
@@ -46,6 +50,13 @@ class Migration(migrations.Migration):
             model_name='historicalcandle',
             name='account_id',
             field=models.BigIntegerField(db_column='account_id', db_index=True),
+        ),
+        migrations.AddConstraint(
+            model_name='historicalcandle',
+            constraint=models.UniqueConstraint(
+                fields=('account_id', 'symbol', 'timeframe', 'timestamp', 'dataset'),
+                name='unique_historical_candle',
+            ),
         ),
         migrations.RenameField(
             model_name='historicaldataset',

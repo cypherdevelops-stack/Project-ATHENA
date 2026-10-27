@@ -148,6 +148,13 @@ def start_monitor() -> None:
             return
         if 'test' in os.sys.argv or os.environ.get('ATHENA_DISABLE_MT5_MONITOR') == '1':
             return
+        executable = os.path.basename(os.sys.argv[0]).lower()
+        if (
+            executable in {'manage.py', 'django-admin'}
+            and len(os.sys.argv) > 1
+            and os.sys.argv[1] != 'runserver'
+        ):
+            return
         thread = threading.Thread(target=monitor_loop, name='athena-mt5-monitor', daemon=True)
         thread.start()
         _monitor_started = True

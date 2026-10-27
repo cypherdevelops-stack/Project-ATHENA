@@ -7,6 +7,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RemoveIndex(
+            model_name='newsintelligencesnapshot',
+            name='news_intell_account_665ce0_idx',
+        ),
         migrations.RenameField(
             model_name='newsintelligencesnapshot',
             old_name='account',
@@ -16,6 +20,13 @@ class Migration(migrations.Migration):
             model_name='newsintelligencesnapshot',
             name='account_id',
             field=models.BigIntegerField(db_column='account_id', db_index=True),
+        ),
+        migrations.AddIndex(
+            model_name='newsintelligencesnapshot',
+            index=models.Index(
+                fields=['account_id', '-captured_at'],
+                name='news_intell_account_665ce0_idx',
+            ),
         ),
         migrations.RemoveField(
             model_name='newsintelligencesnapshot',

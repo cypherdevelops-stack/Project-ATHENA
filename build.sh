@@ -8,8 +8,7 @@ python -m pip install -r requirements.txt
 npm ci --prefix frontend
 npm run build --prefix frontend
 
-python manage.py makemigrations --noinput
-python manage.py migrate --noinput
+python manage.py migrate_all
 python manage.py collectstatic --noinput
 
 exec daphne -b 0.0.0.0 -p "${PORT:-8000}" backend.asgi:application
