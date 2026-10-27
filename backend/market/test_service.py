@@ -54,3 +54,37 @@ class MarketDataServiceTests(SimpleTestCase):
 
         with self.assertRaisesRegex(MarketDataError, 'invalid credentials'):
             service.fetch(account)
+
+    def test_matching_sources_verify_and_prefer_broker_candles(self):
+        candle = {'time': 100, 'open': 10.0, 'high': 11.0, 'low': 9.0, 'close': 10.5, 'volume': 1}
+        selected, quality = MarketDataService._verify_candles(
+            {'MT5': [candle], 'TwelveData': [dict(candle)]},
+            threshold=0.05,
+        )
+
+        self.assertTrue(quality['verified'])
+        self.assertEqual(quality['sources'], ['MT5', 'TwelveData'])
+        self.assertEqual(selected, [candle])
+
+    def test_conflicting_sources_do_not_verify(self):
+        broker_candle = {'time': 100, 'open': 10.0, 'high': 11.0, 'low': 9.0, 'close': 10.5, 'volume': 1}
+        api_candle = {**broker_candle, 'close': 10.6}
+        _, quality = MarketDataService._verify_candles(
+            {'MT5': [broker_candle], 'FCSAPI': [api_candle]},
+            threshold=0.05,
+        )
+
+        self.assertFalse(quality['verified'])
+        self.assertIn('conflict', quality['reason'])
+
+    def test_majority_sources_exclude_an_outlier(self):
+        broker_candle = {'time': 100, 'open': 10.0, 'high': 11.0, 'low': 9.0, 'close': 10.5, 'volume': 1}
+        twelve_candle = dict(broker_candle)
+        fcs_candle = {**broker_candle, 'close': 10.7}
+        _, quality = MarketDataService._verify_candles(
+            {'MT5': [broker_candle], 'TwelveData': [twelve_candle], 'FCSAPI': [fcs_candle]},
+            threshold=0.05,
+        )
+
+        self.assertTrue(quality['verified'])
+        self.assertEqual(quality['sources'], ['MT5', 'TwelveData'])

@@ -62,3 +62,11 @@ input {
   border: 0;
   cursor: pointer;
 }
+
+.authentication-layout .password-visibility {
+  justify-self: start;
+  padding: 0;
+  color: #35d0db;
+  background: transparent;
+  text-decoration: underline;
+}

@@ -38,6 +38,7 @@ def context_view(request):
             'latestCandle': candles[-1] if candles else None,
             'regime': classify_regime(candles),
             'status': 'HEALTHY' if candles else 'UNAVAILABLE',
+            'marketDataQuality': data.data_quality,
         })
     except MarketDataError as error:
         return JsonResponse({'status': 'UNAVAILABLE', 'reason': str(error)})

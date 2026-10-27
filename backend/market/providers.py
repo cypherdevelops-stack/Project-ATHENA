@@ -35,7 +35,7 @@ def _request_json(source: str, url: str) -> object:
         with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             return json.loads(response.read().decode('utf-8'))
     except HTTPError as error:
-        raise MarketDataProviderError(source, rate_limited=error.code == 429) from error
+        raise MarketDataProviderError(source, rate_limited=error.code in {402, 403, 429}) from error
     except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise MarketDataProviderError(source) from error
 
@@ -43,8 +43,22 @@ def _request_json(source: str, url: str) -> object:
 def _rate_limited(payload: object) -> bool:
     if not isinstance(payload, dict):
         return False
-    error = str(payload.get('message') or payload.get('msg') or payload.get('note') or '').lower()
-    return any(token in error for token in ('rate limit', 'request limit', 'too many requests', 'quota exceeded', '429'))
+    error = ' '.join(
+        str(payload.get(key) or '')
+        for key in ('message', 'msg', 'note', 'code')
+    ).lower()
+    return any(token in error for token in (
+        'rate limit',
+        'request limit',
+        'daily limit',
+        'monthly limit',
+        'too many requests',
+        'quota',
+        'credit',
+        'limit exceeded',
+        'exceeded your',
+        '429',
+    ))
 
 
 def _failed_response(source: str, payload: object) -> bool:
@@ -100,8 +114,11 @@ def _normalize_provider_candles(source: str, records: object) -> list[dict]:
                 'high': float(_record_value(record, 'high', 'h')),
                 'low': float(_record_value(record, 'low', 'l')),
                 'close': float(_record_value(record, 'close', 'c')),
-                'volume': int(float(_record_value(record, 'volume', 'tickVolume', 'tick_volume', 'v'))),
             }
+            try:
+                candle['volume'] = int(float(_record_value(record, 'volume', 'tickVolume', 'tick_volume', 'v') or 0))
+            except (TypeError, ValueError):
+                candle['volume'] = 0
         except (OverflowError, TypeError, ValueError):
             continue
         prices = (candle['open'], candle['high'], candle['low'], candle['close'])
@@ -201,7 +218,7 @@ class MetaApiHistoricalProvider:
             with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 payload = json.loads(response.read().decode('utf-8'))
         except HTTPError as error:
-            raise MarketDataProviderError(self.source, rate_limited=error.code == 429) from error
+            raise MarketDataProviderError(self.source, rate_limited=error.code in {402, 403, 429}) from error
         except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise MarketDataProviderError(self.source) from error
         return _normalize_provider_candles(self.source, payload)[-count:]

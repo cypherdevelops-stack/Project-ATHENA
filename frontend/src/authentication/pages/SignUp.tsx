@@ -4,6 +4,7 @@ import { authService } from '../services/authService';
 
 export function SignUp() {
   const [error, setError] = useState<string | null>(null);
+  const [showPasswords, setShowPasswords] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,12 +34,20 @@ export function SignUp() {
         </label>
         <label>
           Password
-          <input name="password" type="password" autoComplete="new-password" required />
+          <input name="password" type={showPasswords ? 'text' : 'password'} autoComplete="new-password" required />
         </label>
         <label>
           Confirm password
-          <input name="passwordConfirmation" type="password" autoComplete="new-password" required />
+          <input name="passwordConfirmation" type={showPasswords ? 'text' : 'password'} autoComplete="new-password" required />
         </label>
+        <button
+          className="password-visibility"
+          type="button"
+          aria-pressed={showPasswords}
+          onClick={() => setShowPasswords((visible) => !visible)}
+        >
+          {showPasswords ? 'Hide passwords' : 'Show passwords'}
+        </button>
         {error && <p role="alert">{error}</p>}
         <button type="submit">Create account</button>
       </form>

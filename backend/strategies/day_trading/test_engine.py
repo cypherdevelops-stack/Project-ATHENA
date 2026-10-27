@@ -66,3 +66,36 @@ class DayTradingEngineTests(SimpleTestCase):
         )
 
         self.assertEqual(result, [])
+
+    def test_unverified_market_data_blocks_a_developing_candidate(self):
+        result = generate_day_trading_candidates(
+            account=self.account,
+            broker_symbol='XAUUSD.Z',
+            current_price=105,
+            h4_features={'structure': 'BULLISH'},
+            h1_features={'structure': 'BULLISH'},
+            m15_features={
+                'structure': 'BULLISH',
+                'orderBlocks': [{
+                    'direction': 'BULLISH',
+                    'lowerBound': 104,
+                    'upperBound': 106,
+                    'state': 'DETECTED',
+                    'type': 'ORDER_BLOCK',
+                    'time': 1,
+                }],
+                'fairValueGaps': [],
+            },
+            m15_candles=[
+                {'open': 104.5, 'close': 105, 'high': 106, 'low': 104}
+                for _ in range(10)
+            ],
+            h1_candles=[
+                {'open': 107, 'close': 108, 'high': 110, 'low': 100}
+                for _ in range(20)
+            ],
+            context={'execution_allowed': False},
+        )
+
+        self.assertEqual(result[0]['decisionState'], 'BLOCKED')
+        self.assertIn('MARKET_DATA_UNVERIFIED', result[0]['reasonCodes'])

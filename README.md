@@ -806,7 +806,9 @@ Before running ATHENA locally, ensure you have:
 - A compatible broker account for live/sandbox testing
 
 > **Important:** MetaTrader 5 integration is environment-dependent. The Python MT5 package is designed around the MetaTrader 5 terminal environment and should not be assumed to work in a Linux-only deployment such as a standard cloud web service.
-> MetaAPI connections validate account details during onboarding and store the API token encrypted. Live order execution and ongoing market-data monitoring for MetaAPI accounts are not yet supported.
+> MetaAPI connections validate account details during onboarding and store the API token encrypted. MetaAPI historical candles can participate in market-data verification. Live order execution from historical candles alone is blocked because they do not provide a current broker bid/ask quote.
+
+Market candles are checked against the available configured feeds: MT5 for broker-connected accounts, MetaAPI historical data for MetaAPI accounts, Twelve Data, and FCS API. At least two sources must agree within `MARKET_DATA_MAX_PRICE_DEVIATION_PERCENT` (default `0.05`) for execution; with fewer agreeing sources, market analysis can continue but execution is blocked. Execution also requires a fresh MT5 quote (`MARKET_DATA_MAX_QUOTE_AGE_SECONDS`, default `60`), so historical candles alone never authorize an order. Successful external candles are briefly cached and rate-limited providers are temporarily skipped while other configured sources continue to be used.
 
 ---
 
@@ -920,6 +922,11 @@ MT5_SERVER=your-broker-server
 # -------------------------------------------------
 
 NEWS_API_KEY=your-news-api-key
+
+# Market data verification
+TWELVE_DATA_API_KEY=your-twelve-data-api-key
+fcsapi_API_KEY=your-fcsapi-api-key
+MARKET_DATA_MAX_PRICE_DEVIATION_PERCENT=0.05
 
 # -------------------------------------------------
 # ML

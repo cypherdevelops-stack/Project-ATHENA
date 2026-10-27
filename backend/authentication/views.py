@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
@@ -50,16 +51,23 @@ def login_view(request):
     if error:
         return error
 
-    email = str(body.get('email', '')).strip().lower()
+    login_identifier = str(body.get('email', body.get('username', ''))).strip()
     password = body.get('password', '')
-    if not email or not isinstance(password, str) or not password:
-        return JsonResponse({'detail': 'Email and password are required.'}, status=400)
+    if not login_identifier or not isinstance(password, str) or not password:
+        return JsonResponse({'detail': 'Email or username and password are required.'}, status=400)
 
-    user = authenticate(request, username=email, password=password)
+    email_user = User.objects.filter(email__iexact=login_identifier).first()
+    user = authenticate(request, username=login_identifier, password=password)
+    if user is None and email_user and email_user.get_username() != login_identifier:
+        user = authenticate(request, username=email_user.get_username(), password=password)
+
     if user is None or not user.is_active:
-        if User.objects.filter(email__iexact=email, is_active=True).exists():
+        if User.objects.filter(
+            Q(email__iexact=login_identifier) | Q(username__iexact=login_identifier),
+            is_active=True,
+        ).exists():
             return JsonResponse({'detail': 'Incorrect password.'}, status=401)
-        return JsonResponse({'detail': 'Invalid email or password.'}, status=401)
+        return JsonResponse({'detail': 'Invalid email, username, or password.'}, status=401)
 
     login(request, user)
     return JsonResponse(_session_payload(request))

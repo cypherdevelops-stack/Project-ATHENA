@@ -4,6 +4,7 @@ import { authService } from '../services/authService';
 
 export function Login() {
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,13 +28,21 @@ export function Login() {
       <h1>Sign in</h1>
       <form onSubmit={handleSubmit}>
         <label>
-          Email
-          <input name="email" type="email" autoComplete="email" required />
+          Email or username
+          <input name="email" type="text" autoComplete="username" required />
         </label>
         <label>
           Password
-          <input name="password" type="password" autoComplete="current-password" required />
+          <input name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required />
         </label>
+        <button
+          className="password-visibility"
+          type="button"
+          aria-pressed={showPassword}
+          onClick={() => setShowPassword((visible) => !visible)}
+        >
+          {showPassword ? 'Hide password' : 'Show password'}
+        </button>
         {error && <p role="alert">{error}</p>}
         <button type="submit">Sign in</button>
       </form>

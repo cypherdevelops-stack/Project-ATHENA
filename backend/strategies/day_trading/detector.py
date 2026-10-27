@@ -222,7 +222,7 @@ def generate_day_trading_candidates(*, account, broker_symbol: str, current_pric
         }
 
         # Only return candidate if it's at least DEVELOPING (not OBSERVE)
-        if decision_state in {'DEVELOPING', 'RISK_APPROVED'}:
+        if decision_state in {'DEVELOPING', 'RISK_APPROVED', 'BLOCKED'}:
             candidates.append(candidate)
 
     return candidates

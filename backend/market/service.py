@@ -3,15 +3,14 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone as datetime_timezone
-from itertools import combinations
 import hashlib
+from itertools import combinations
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.accounts.handshake import DEFAULT_MT5_TERMINAL_PATH
 from django.conf import settings
 from django.core.cache import cache
-from django.utils import timezone
 
 from .context import normalize_candles
 from .providers import (
@@ -30,6 +29,15 @@ _CACHE_SECONDS = {
     'H1': 300,
     'H4': 600,
     'D1': 1800,
+}
+_TIMEFRAME_SECONDS = {
+    'M1': 60,
+    'M5': 300,
+    'M15': 900,
+    'M30': 1800,
+    'H1': 3600,
+    'H4': 14400,
+    'D1': 86400,
 }
 
 
@@ -163,13 +171,14 @@ class MarketDataService:
 
         if getattr(account, 'connection_method', 'BROKER') == 'BROKER':
             adapter = self.adapter_factory()
+            quote_status = 'UNAVAILABLE'
             try:
                 adapter.connect(account)
                 try:
                     snapshot = adapter.snapshot(account)
-                    source_status['MT5'] = {'status': 'AVAILABLE'}
+                    quote_status = 'AVAILABLE'
                 except Exception:
-                    source_status['MT5'] = {'status': 'UNAVAILABLE', 'reason': 'Live quote unavailable.'}
+                    quote_status = 'UNAVAILABLE'
                 frames = {}
                 for timeframe in verification_timeframes:
                     try:
@@ -177,10 +186,13 @@ class MarketDataService:
                     except Exception:
                         frames[timeframe] = []
                 source_candles['MT5'] = frames
-                source_status.setdefault('MT5', {'status': 'AVAILABLE'})
-                source_status['MT5']['timeframes'] = {
-                    timeframe: 'AVAILABLE' if frames.get(timeframe) else 'UNAVAILABLE'
-                    for timeframe in verification_timeframes
+                source_status['MT5'] = {
+                    'status': 'AVAILABLE' if any(frames.values()) else 'QUOTE_ONLY' if snapshot else 'UNAVAILABLE',
+                    'quoteStatus': quote_status,
+                    'timeframes': {
+                        timeframe: 'AVAILABLE' if frames.get(timeframe) else 'UNAVAILABLE'
+                        for timeframe in verification_timeframes
+                    },
                 }
             except Exception as error:
                 source_status['MT5'] = {'status': 'UNAVAILABLE', 'reason': str(error)}
@@ -240,6 +252,11 @@ class MarketDataService:
                 reason = reasons[0] if reasons else f'No market-data source returned {timeframe} candles.'
                 raise MarketDataError(reason)
             selected, quality = self._verify_candles(feeds, threshold)
+            latest_age = datetime.now(datetime_timezone.utc).timestamp() - selected[-1]['time']
+            quality['latestCandleAgeSeconds'] = round(latest_age)
+            if latest_age < 0 or latest_age > _TIMEFRAME_SECONDS.get(timeframe, 60) * 2:
+                quality['verified'] = False
+                quality['reason'] = 'The latest candle is stale or has a future timestamp.'
             verified_candles[timeframe] = selected
             timeframe_quality[timeframe] = quality
 
@@ -261,17 +278,28 @@ class MarketDataService:
             )
 
         all_verified = all(item['verified'] for item in timeframe_quality.values())
+        quote_age_limit = int(getattr(settings, 'MARKET_DATA_MAX_QUOTE_AGE_SECONDS', 60))
+        quote_is_fresh = (
+            snapshot.quote_source == 'MT5'
+            and snapshot.latency_ms is not None
+            and 0 <= snapshot.latency_ms <= quote_age_limit * 1000
+        )
         data_quality = {
             'verified': all_verified,
-            'execution_allowed': all_verified and snapshot.quote_source == 'MT5',
+            'execution_allowed': all_verified and quote_is_fresh,
             'minimumSources': 2,
             'maxPriceDeviationPercent': threshold,
+            'maxQuoteAgeSeconds': quote_age_limit,
             'timeframes': timeframe_quality,
             'sources': source_status,
             'reason': (
-                'All requested timeframes were verified across independent sources.'
-                if all_verified
-                else 'Market data is unverified or conflicting; analysis is available but execution is blocked.'
+                'All requested timeframes were verified and the live broker quote is fresh.'
+                if all_verified and quote_is_fresh
+                else (
+                    'Candles were verified, but a fresh live broker quote is unavailable; execution is blocked.'
+                    if all_verified
+                    else 'Market data is unverified or conflicting; analysis is available but execution is blocked.'
+                )
             ),
         }
         snapshot = replace(snapshot, data_quality=data_quality)

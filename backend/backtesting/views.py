@@ -6,13 +6,10 @@ from zoneinfo import ZoneInfo
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 
-from backend.accounts.credentials import decrypt_password
-from backend.accounts.handshake import DEFAULT_MT5_TERMINAL_PATH
 from backend.accounts.models import Account
-from backend.market.context import normalize_candles
+from backend.market.service import market_data_service
 from .ingestion import import_dataset
 from .models import BacktestingDrawing, HistoricalDataset, ReplaySession
 from .replay import advance_replay, create_replay, execute_replay_signal, replay_analysis, replay_metrics, replay_signals, serialize_decision, serialize_session, session_candles
@@ -221,34 +218,26 @@ def market_data_view(request):
     if timeframe_attribute is None:
         return JsonResponse({'status': 'UNAVAILABLE', 'reason': f'Unsupported timeframe: {timeframe_name}.'}, status=400)
 
-    initialized = False
     try:
-        import MetaTrader5 as mt5
-
-        password = decrypt_password(account.password_encrypted)
-        initialized = mt5.initialize(path=account.terminal_path or DEFAULT_MT5_TERMINAL_PATH)
-        if not initialized:
-            return JsonResponse({'status': 'UNAVAILABLE', 'reason': f'MT5 initialization failed: {mt5.last_error()}.'})
-        if not mt5.login(login=int(account.login), password=password, server=account.server):
-            return JsonResponse({'status': 'UNAVAILABLE', 'reason': f'MT5 login failed: {mt5.last_error()}.'})
-
-        rates = mt5.copy_rates_from_pos(account.broker_symbol, getattr(mt5, timeframe_attribute), 0, _candle_count(request))
-        if rates is None:
-            return JsonResponse({'status': 'UNAVAILABLE', 'reason': f'MT5 candle fetch failed: {mt5.last_error()}.'})
-        tick = mt5.symbol_info_tick(account.broker_symbol)
-        if tick is None or getattr(tick, 'bid', None) is None or getattr(tick, 'ask', None) is None:
-            return JsonResponse({'status': 'UNAVAILABLE', 'reason': f'MT5 tick fetch failed: {mt5.last_error()}.'})
-
-        tick_time = datetime.fromtimestamp(int(tick.time), tz=datetime_timezone.utc).isoformat() if getattr(tick, 'time', None) else None
+        data = market_data_service.fetch(
+            account,
+            timeframes=(timeframe_name,),
+            candle_count=_candle_count(request),
+        )
+        snapshot = data.snapshot
         return JsonResponse({
-            'status': 'HEALTHY', 'accountId': account.id, 'accountName': account.display_name,
+            'status': 'HEALTHY' if data.data_quality['verified'] else 'UNVERIFIED',
+            'accountId': account.id, 'accountName': account.display_name,
             'canonicalAsset': account.canonical_asset, 'brokerSymbol': account.broker_symbol,
-            'timeframe': timeframe_name, 'candles': normalize_candles(rates),
-            'price': {'bid': float(tick.bid), 'ask': float(tick.ask), 'spread': float(tick.ask) - float(tick.bid), 'timestamp': tick_time},
-            'receivedAt': timezone.now().astimezone(datetime_timezone.utc).isoformat(),
+            'timeframe': timeframe_name, 'candles': data.candles[timeframe_name],
+            'price': {
+                'bid': snapshot.bid,
+                'ask': snapshot.ask,
+                'spread': snapshot.spread,
+                'timestamp': snapshot.timestamp,
+            },
+            'receivedAt': snapshot.received_at,
+            'marketDataQuality': data.data_quality,
         })
     except Exception as error:
         return JsonResponse({'status': 'UNAVAILABLE', 'reason': str(error)})
-    finally:
-        if initialized:
-            mt5.shutdown()
