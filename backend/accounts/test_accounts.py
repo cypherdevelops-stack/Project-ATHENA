@@ -217,3 +217,20 @@ class MetaApiAccountOnboardingTests(TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertEqual(Account.objects.filter(user=self.user).count(), 0)
+
+    def test_metaapi_account_cannot_be_enabled_until_execution_adapter_is_available(self):
+        account = Account.objects.create(
+            user=self.user,
+            display_name='MetaAPI account',
+            connection_method='METAAPI',
+            external_account_id='metaapi-account-id',
+        )
+
+        response = self.client.patch('/api/account/update', data=json.dumps({
+            'accountId': account.pk,
+            'enabled': True,
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 422)
+        account.refresh_from_db()
+        self.assertFalse(account.enabled)

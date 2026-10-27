@@ -894,7 +894,11 @@ DEBUG=True
 SECRET_KEY=change-me
 
 # -------------------------------------------------
-# Database / Supabase
+# Database / Neon projects
+
+The Django backend reads four Neon PostgreSQL URLs: `ATHENA_CORE_PROD_DATABASE_URL`,
+`ATHENA_MARKET_INTELLIGENCE_DATABASE_URL`, `ATHENA_BACKTESTING_LAB_DATABASE_URL`, and
+`ATHENA_LEARNING_MEMORY_DATABASE_URL`. Keep these values in the ignored `.env` file.
 # -------------------------------------------------
 
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
@@ -968,6 +972,19 @@ python manage.py runserver
 python manage.py makemigrations
 python manage.py migrate
 ```
+
+`python manage.py migrate` applies migrations to all four configured ATHENA databases.
+Use `python manage.py migrate --database market_intelligence` to target one database,
+or `python manage.py migrate --plan` to preview all four plans. Migration connections
+use the direct Neon endpoint when the configured URL uses a `-pooler` host.
+
+User/account/execution and supporting records go to `athena-core-prod`; backtesting
+records go to `athena-backtesting-lab`; news snapshots, market samples, and provider
+health go to `athena-market-intelligence`; and AMEF records, reaction observations, and
+adaptive statistics go to `athena-learning-memory`. Cross-project account/user/news
+references are stored as IDs, not database-enforced foreign keys. Migrations do not
+copy existing rows between projects; plan a separate data transfer before switching
+an existing deployment to this split.
 
 ## Frontend
 

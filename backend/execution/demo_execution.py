@@ -11,6 +11,7 @@ from backend.execution.intent_service import persist_execution_intent
 from backend.execution.models import ExecutionIntent
 from backend.execution.risk_engine import assess_risk
 from backend.execution.trade_setup import build_trade_setup
+from backend.execution.trading_audit import record_execution_outcome
 
 
 class DemoExecutionError(ValueError):
@@ -148,6 +149,14 @@ def execute_confirmed_demo_decision(*, account, snapshot, confirmation: bool, id
         intent.status = 'REJECTED'
         intent.invalidation_reason = str(error)
         intent.save(update_fields=['status', 'invalidation_reason'])
+        record_execution_outcome(
+            strategy=strategy,
+            decision_id=snapshot.decision_id,
+            executed=False,
+            execution_status='REJECTED',
+            reason=str(error),
+            timestamp=attempt.completed_at,
+        )
         publish_lifecycle_event(
             account=account,
             decision_id=snapshot.decision_id,
@@ -167,6 +176,14 @@ def execute_confirmed_demo_decision(*, account, snapshot, confirmation: bool, id
     attempt.save(update_fields=['status', 'order_ticket', 'deal_ticket', 'broker_response', 'reason', 'completed_at'])
     intent.status = attempt.status
     intent.save(update_fields=['status'])
+    record_execution_outcome(
+        strategy=strategy,
+        decision_id=snapshot.decision_id,
+        executed=attempt.status == 'ACCEPTED',
+        execution_status=attempt.status,
+        reason=attempt.reason or ('Broker accepted the order.' if attempt.status == 'ACCEPTED' else 'Broker rejected the order.'),
+        timestamp=attempt.completed_at,
+    )
     event_type = 'ORDER_ACCEPTED' if attempt.status == 'ACCEPTED' else 'ORDER_REJECTED'
     publish_lifecycle_event(
         account=account,

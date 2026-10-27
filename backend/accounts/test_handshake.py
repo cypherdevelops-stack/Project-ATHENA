@@ -6,6 +6,7 @@ from django.test import SimpleTestCase
 from backend.execution.symbol_resolver import discover_symbol_capabilities
 
 from .handshake import HandshakeStage, HandshakeStatus, discover_demo_account, verify_broker_handshake
+from .metaapi import MetaApiHandshakeError, verify_metaapi_handshake
 
 
 class AccountHandshakeTests(SimpleTestCase):
@@ -75,3 +76,43 @@ class AccountHandshakeTests(SimpleTestCase):
         self.assertEqual(result['status'], 'SUCCESS')
         self.assertEqual(result['account_id'], 123456)
         self.assertTrue(result['trade_allowed'])
+
+
+class MetaApiHandshakeTests(SimpleTestCase):
+    def test_api_handshake_collects_account_validation_facts(self):
+        profile = {
+            'region': 'london',
+            'state': 'DEPLOYED',
+            'platform': 'mt5',
+            'login': '123456',
+            'server': 'Example-Demo',
+            'broker': 'Example Broker',
+        }
+        account_info = {
+            'balance': 1000.25,
+            'equity': 998.75,
+            'leverage': 200,
+            'currency': 'USD',
+            'tradeAllowed': True,
+            'marginMode': 'HEDGED',
+        }
+        with patch(
+            'backend.accounts.metaapi._get_json',
+            side_effect=[profile, account_info, [{'symbol': 'XAUUSD.a'}], ['XAUUSD.a', 'EURUSD']],
+        ) as get_json:
+            result = verify_metaapi_handshake('metaapi-account-id', 'private-token')
+
+        self.assertEqual(result['account_id'], '123456')
+        self.assertEqual(result['platform'], 'MT5')
+        self.assertEqual(result['balance'], '1000.25')
+        self.assertEqual(result['equity'], '998.75')
+        self.assertEqual(result['leverage'], 200)
+        self.assertTrue(result['trade_allowed'])
+        self.assertEqual(result['existing_positions'], 1)
+        self.assertEqual(result['market_discovery']['brokerSymbol'], 'XAUUSD.a')
+        self.assertEqual(get_json.call_count, 4)
+
+    def test_api_handshake_rejects_accounts_that_are_not_deployed(self):
+        with patch('backend.accounts.metaapi._get_json', return_value={'region': 'london', 'state': 'DEPLOYING'}):
+            with self.assertRaisesRegex(MetaApiHandshakeError, 'Deploy the MetaAPI account'):
+                verify_metaapi_handshake('metaapi-account-id', 'private-token')

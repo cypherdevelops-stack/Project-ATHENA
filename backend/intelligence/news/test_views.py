@@ -31,7 +31,7 @@ class NewsApiTests(TestCase):
         response = self.client.get('/api/news/current?accountId=%s&symbol=XAUUSD' % self.account.pk)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['news']['snapshotId'], str(self.snapshot.snapshot_id))
-        self.assertTrue(NewsAMEFRecord.objects.filter(news_snapshot=self.snapshot).exists())
+        self.assertTrue(NewsAMEFRecord.objects.filter(news_snapshot_id=self.snapshot.pk).exists())
 
     def test_snapshot_list_filters_by_symbol_and_does_not_leak_accounts(self):
         self.client.force_login(self.user)

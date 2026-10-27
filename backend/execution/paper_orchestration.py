@@ -8,6 +8,7 @@ from backend.execution.models import PaperExecution
 from backend.execution.paper_engine import PaperTradeError, open_paper_position
 from backend.execution.risk_engine import assess_risk
 from backend.execution.trade_setup import build_trade_setup
+from backend.execution.trading_audit import record_execution_outcome
 
 
 class PaperOrchestrationError(ValueError):
@@ -28,6 +29,7 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
     if not action.endswith('_APPROVED') or strategy not in {'SCALPING', 'DAY_TRADING'}:
         return _record(
             account=account,
+            strategy=strategy,
             decision_id=decision_id,
             status='SKIPPED',
             reason=f'Decision {action} is not paper-executable.',
@@ -43,6 +45,7 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
     if not news_allowed:
         return _record(
             account=account,
+            strategy=strategy,
             decision_id=decision_id,
             status='REJECTED',
             reason=f'News execution block: {news_reason}',
@@ -72,6 +75,7 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
     if not risk.get('approved') or setup.get('state') != 'RISK_APPROVED':
         return _record(
             account=account,
+            strategy=strategy,
             decision_id=decision_id,
             status='REJECTED',
             reason=risk.get('reason', 'Paper risk approval failed.'),
@@ -84,6 +88,7 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
     except PaperTradeError as error:
         return _record(
             account=account,
+            strategy=strategy,
             decision_id=decision_id,
             status='REJECTED',
             reason=str(error),
@@ -93,6 +98,7 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
 
     return _record(
         account=account,
+        strategy=strategy,
         decision_id=decision_id,
         status='OPENED',
         position_id=position['position_id'],
@@ -101,7 +107,7 @@ def execute_paper_decision(*, account, analysis: dict, decision_id: UUID, quote:
     )
 
 
-def _record(*, account, decision_id, status, setup, quote, reason='', position_id=None) -> dict:
+def _record(*, account, strategy, decision_id, status, setup, quote, reason='', position_id=None) -> dict:
     try:
         execution = PaperExecution.objects.create(
             account=account,
@@ -115,6 +121,14 @@ def _record(*, account, decision_id, status, setup, quote, reason='', position_i
     except IntegrityError:
         execution = PaperExecution.objects.get(decision_id=decision_id)
         return _execution_payload(execution, duplicate=True)
+    record_execution_outcome(
+        strategy=strategy,
+        decision_id=decision_id,
+        executed=status == 'OPENED',
+        execution_status=f'PAPER_{status}',
+        reason=reason or ('Paper position opened.' if status == 'OPENED' else 'Decision was not executed in paper mode.'),
+        timestamp=execution.created_at,
+    )
     return _execution_payload(execution)
 
 

@@ -119,6 +119,9 @@ def verify_metaapi_handshake(account_id, token):
     platform = str(profile.get('platform', information.get('platform', ''))).upper()
     if platform not in {'MT4', 'MT5'}:
         raise MetaApiHandshakeError('MetaAPI returned an unsupported trading platform.')
+    currency = str(information.get('currency') or information.get('currencyCode') or '').strip().upper()
+    if not re.fullmatch(r'[A-Z]{3}', currency):
+        raise MetaApiHandshakeError('MetaAPI did not return a valid account currency.')
 
     market_discovery = _asset_discovery(symbols)
     return {
@@ -130,7 +133,7 @@ def verify_metaapi_handshake(account_id, token):
         'balance': str(balance),
         'equity': str(equity),
         'leverage': int(leverage),
-        'currency': str(information.get('currency', information.get('currencyCode', 'USD')))[:3],
+        'currency': currency,
         'account_mode': str(information.get('marginMode', information.get('accountMode', 'UNKNOWN'))),
         'trade_allowed': bool(information.get('tradeAllowed', False)),
         'market_discovery': market_discovery,

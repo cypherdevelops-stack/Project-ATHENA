@@ -202,7 +202,7 @@ def create_account_view(request):
         allowed_instruments = [canonical_asset] if canonical_asset else []
     if connection_method == 'METAAPI' and verified['market_discovery']['canonicalAsset']:
         canonical_asset = verified['market_discovery']['canonicalAsset']
-        allowed_instruments = [verified['market_discovery']['brokerSymbol']] if verified['market_discovery']['brokerSymbol'] else []
+        allowed_instruments = [canonical_asset]
     else:
         canonical_asset = str(body.get('canonicalAsset', '')).strip()
     account = Account.objects.create(
@@ -310,7 +310,7 @@ def discover_account_view(request):
                 'brokerSymbol': discovery['brokerSymbol'],
                 'marketDiscovery': discovery,
                 'existingPositions': result['existing_positions'],
-                'executionValidation': 'READY',
+                'executionValidation': 'API_READ_ONLY',
             },
         })
 
@@ -430,6 +430,10 @@ def update_account_view(request):
     account = _account_for(request) if account_id in (None, '') else Account.objects.filter(pk=account_id, user=request.user).first()
     if account is None:
         return JsonResponse({'detail': 'Account was not found.'}, status=404)
+    if account.connection_method == 'METAAPI' and bool(body.get('enabled')):
+        return JsonResponse({
+            'detail': 'MetaAPI accounts can be onboarded, but trading actions require a MetaAPI execution adapter.',
+        }, status=422)
 
     password = body.get('password')
     if password is not None:

@@ -25,7 +25,7 @@ class ReactionSamplingTests(TestCase):
         capture_market_sample(news_snapshot=self.news_snapshot, phase='POST', quote={'bid': 101, 'ask': 101.2}, captured_at=timestamp.replace(minute=5), volatility='HIGH')
 
         self.assertEqual(NewsMarketSample.objects.count(), 2)
-        observation = NewsReactionObservation.objects.get(news_snapshot=self.news_snapshot)
+        observation = NewsReactionObservation.objects.get(news_snapshot_id=self.news_snapshot.pk)
         self.assertEqual(observation.reaction_state, 'CONFIRMED')
         self.assertGreater(observation.price_change, 0)
 

@@ -49,7 +49,7 @@ def _parquet_rows(upload):
     return [{str(key).strip().lower(): value for key, value in row.items()} for row in rows], list(table.column_names)
 
 
-@transaction.atomic
+@transaction.atomic(using='backtesting')
 def import_dataset(*, user, account, upload, source_timezone, timeframe, symbol, version, source='IMPORT'):
     if timeframe not in {'M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'}:
         raise ValueError('Unsupported dataset timeframe.')

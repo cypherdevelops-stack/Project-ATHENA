@@ -91,7 +91,7 @@ def serialize_decision(decision):
             'createdAt': decision.created_at.isoformat()}
 
 
-@transaction.atomic
+@transaction.atomic(using='backtesting')
 def create_replay(*, user, account, timeframe, candle_count, slippage=0.0, commission=0.0,
                   dataset=None, start_time=None, end_time=None):
     if dataset is None:

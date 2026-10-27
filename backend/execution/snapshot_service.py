@@ -6,6 +6,7 @@ from backend.execution.contracts import OrchestrationDecision
 from backend.execution.models import OrchestrationSnapshot
 from backend.execution.lifecycle_events import publish_lifecycle_event
 from backend.execution.intent_service import persist_execution_intent
+from backend.execution.trading_audit import record_orchestration_candidates
 from backend.market.momentum_amef import build_momentum_snapshot
 
 
@@ -92,4 +93,10 @@ def persist_orchestration_snapshot(*, account, analysis: dict[str, Any]) -> Orch
             symbol=intent.symbol,
             payload={'intentId': intent.pk, 'strategy': intent.strategy, 'direction': intent.direction},
         )
+    record_orchestration_candidates(
+        account=account,
+        analysis=analysis,
+        decision_id=snapshot.decision_id,
+        timestamp=snapshot.timestamp,
+    )
     return snapshot
