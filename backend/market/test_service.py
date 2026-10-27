@@ -39,7 +39,7 @@ class FailingAdapter(FakeAdapter):
 class MarketDataServiceTests(SimpleTestCase):
     def test_fetch_returns_snapshot_and_requested_candles(self):
         account = SimpleNamespace(broker_symbol='XAUUSD247', canonical_asset='XAUUSD')
-        service = MarketDataService(adapter_factory=FakeAdapter)
+        service = MarketDataService(adapter_factory=FakeAdapter, provider_factories=[])
 
         result = service.fetch(account, timeframes=('M1', 'M5'))
 
@@ -50,7 +50,7 @@ class MarketDataServiceTests(SimpleTestCase):
 
     def test_adapter_error_is_preserved(self):
         account = SimpleNamespace(broker_symbol='XAUUSD247', canonical_asset='XAUUSD')
-        service = MarketDataService(adapter_factory=FailingAdapter)
+        service = MarketDataService(adapter_factory=FailingAdapter, provider_factories=[])
 
         with self.assertRaisesRegex(MarketDataError, 'invalid credentials'):
             service.fetch(account)

@@ -147,6 +147,8 @@ def generate_execution_analysis(
             **(regime_context or {}),
             **detect_setup_evidence(m1_candles),
             'momentumMap': momentum_map.as_dict(),
+            'execution_allowed': (current_price_data or {}).get('dataQuality', {}).get('execution_allowed', True),
+            'marketDataQuality': (current_price_data or {}).get('dataQuality', {}),
         }
         candidates = generate_scalping_candidates(
             account=account,
@@ -378,6 +380,16 @@ def generate_orchestrated_execution_analysis(
         # Evaluate portfolio state
         current_equity = account.account_equity if hasattr(account, 'account_equity') else 100000
         portfolio_state = portfolio_governor.evaluate_portfolio_state(current_equity=current_equity)
+        market_data_quality = (current_price_data or {}).get('dataQuality') or {}
+        if market_data_quality and not market_data_quality.get('execution_allowed', False):
+            portfolio_state = {
+                **portfolio_state,
+                'execution_allowed': False,
+                'execution_reason': market_data_quality.get(
+                    'reason',
+                    'Market data verification failed.',
+                ),
+            }
         news_sentiment = news_sentiment or {}
         structure_by_timeframe = {'H1': (regime_context or {}).get('structure', 'UNKNOWN')}
         momentum_map = build_momentum_map(
@@ -474,6 +486,8 @@ def generate_orchestrated_execution_analysis(
                 'news_provider_available': news_sentiment.get('provider_available', False),
                 'momentumMap': momentum_map.as_dict(),
                 'smcEvidence': smc_context,
+                'execution_allowed': portfolio_state.get('execution_allowed', True),
+                'marketDataQuality': market_data_quality,
             }
             scalping_candidates = generate_scalping_candidates(
                 account=account,
@@ -593,6 +607,7 @@ def generate_orchestrated_execution_analysis(
             'portfolioState': portfolio_state,
             'momentumMap': momentum_map.as_dict(),
             'smcContext': smc_context,
+            'marketDataQuality': market_data_quality,
         }
 
     except Exception as e:

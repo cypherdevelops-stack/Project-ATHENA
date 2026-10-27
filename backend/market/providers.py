@@ -10,9 +10,6 @@ from urllib.request import Request, urlopen
 from backend.accounts.credentials import decrypt_password
 from backend.accounts.metaapi import PROVISIONING_API, _get_json
 
-from .context import normalize_candles
-
-
 REQUEST_TIMEOUT_SECONDS = 10
 TIMEFRAME_MAP = {
     'M1': ('1min', '1m'),
@@ -79,9 +76,9 @@ def _record_value(record: dict, *keys: str, default=0):
     return default
 
 
-def _normalize_provider_candles(records: object) -> list[dict]:
+def _normalize_provider_candles(source: str, records: object) -> list[dict]:
     if not isinstance(records, list):
-        raise MarketDataProviderError('Provider')
+        raise MarketDataProviderError(source)
     normalized_records = []
     for record in records:
         if not isinstance(record, dict):
@@ -116,7 +113,7 @@ def _normalize_provider_candles(records: object) -> list[dict]:
             continue
         normalized_records.append(candle)
     if not normalized_records:
-        raise MarketDataProviderError('Provider')
+        raise MarketDataProviderError(source)
     by_time = {candle['time']: candle for candle in normalized_records}
     return [by_time[key] for key in sorted(by_time)]
 
@@ -135,12 +132,13 @@ class TwelveDataProvider:
             'symbol': _canonical_symbol(symbol),
             'interval': interval,
             'outputsize': min(count, 5000),
+            'timezone': 'UTC',
             'apikey': self.api_key,
         })
         payload = _request_json(self.source, f'https://api.twelvedata.com/time_series?{query}')
         _failed_response(self.source, payload)
         records = payload.get('values') if isinstance(payload, dict) else None
-        return _normalize_provider_candles(records)[-count:]
+        return _normalize_provider_candles(self.source, records)[-count:]
 
 
 class FCSApiProvider:
@@ -156,13 +154,14 @@ class FCSApiProvider:
         query = urlencode({
             'symbol': _canonical_symbol(symbol),
             'period': period,
+            'timezone': 'UTC',
             'access_key': self.api_key,
             'count': min(count, 2000),
         })
         payload = _request_json(self.source, f'https://fcsapi.com/api-v3/forex/history?{query}')
         _failed_response(self.source, payload)
         records = payload.get('response') if isinstance(payload, dict) else None
-        return _normalize_provider_candles(records)[-count:]
+        return _normalize_provider_candles(self.source, records)[-count:]
 
 
 class MetaApiHistoricalProvider:
@@ -184,6 +183,9 @@ class MetaApiHistoricalProvider:
             region = str(profile.get('region', '') if isinstance(profile, dict) else '').strip()
         if not region or any(character not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-' for character in region):
             raise MarketDataProviderError(self.source)
+        if not market_discovery.get('metaApiRegion'):
+            account.market_discovery = {**market_discovery, 'metaApiRegion': region}
+            account.save(update_fields=['market_discovery'])
         base_url = f'https://mt-market-data-client-api-v1.{region}.agiliumtrade.ai'
         endpoint = (
             f'{base_url}/users/current/accounts/{account_id}/historical-market-data/'
@@ -202,4 +204,4 @@ class MetaApiHistoricalProvider:
             raise MarketDataProviderError(self.source, rate_limited=error.code == 429) from error
         except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise MarketDataProviderError(self.source) from error
-        return _normalize_provider_candles(payload)[-count:]
+        return _normalize_provider_candles(self.source, payload)[-count:]

@@ -114,6 +114,7 @@ def generate_day_trading_candidates(*, account, broker_symbol: str, current_pric
         'NEWS_LOCK': context.get('news_locked', False),
         'MARKET_CLOSED': context.get('market_open', True) is False,
         'CORRELATION_EXPOSURE_EXCEEDED': context.get('correlation_allowed', True) is False,
+        'MARKET_DATA_UNVERIFIED': context.get('execution_allowed', True) is False,
     }
     hard_gate_codes.extend(code for code, active in hard_gates.items() if active)
     risk_allowed = not hard_gate_codes

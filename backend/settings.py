@@ -20,6 +20,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
+TWELVE_DATA_API_KEY = os.getenv('TWELVE_DATA_API_KEY', '')
+FCSAPI_API_KEY = os.getenv('fcsapi_API_KEY') or os.getenv('FCSAPI_API_KEY', '')
+MARKET_DATA_MAX_PRICE_DEVIATION_PERCENT = float(
+    os.getenv('MARKET_DATA_MAX_PRICE_DEVIATION_PERCENT', '0.05')
+)
 
 
 # Quick-start development settings - unsuitable for production

@@ -136,6 +136,6 @@ def verify_metaapi_handshake(account_id, token):
         'currency': currency,
         'account_mode': str(information.get('marginMode', information.get('accountMode', 'UNKNOWN'))),
         'trade_allowed': bool(information.get('tradeAllowed', False)),
-        'market_discovery': market_discovery,
+        'market_discovery': {**market_discovery, 'metaApiRegion': region},
         'existing_positions': len(positions),
     }

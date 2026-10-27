@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone as datetime_timezone
 from itertools import combinations
-import math
+import hashlib
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from backend.accounts.credentials import decrypt_password
 from backend.accounts.handshake import DEFAULT_MT5_TERMINAL_PATH
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
 from .context import normalize_candles
@@ -22,6 +22,15 @@ from .providers import (
 )
 
 EAT = ZoneInfo('Africa/Nairobi')
+_CACHE_SECONDS = {
+    'M1': 60,
+    'M5': 60,
+    'M15': 120,
+    'M30': 180,
+    'H1': 300,
+    'H4': 600,
+    'D1': 1800,
+}
 
 
 class MarketDataError(RuntimeError):
@@ -173,8 +182,8 @@ class MarketDataService:
                     timeframe: 'AVAILABLE' if frames.get(timeframe) else 'UNAVAILABLE'
                     for timeframe in verification_timeframes
                 }
-            except Exception:
-                source_status['MT5'] = {'status': 'UNAVAILABLE', 'reason': 'MT5 connection unavailable.'}
+            except Exception as error:
+                source_status['MT5'] = {'status': 'UNAVAILABLE', 'reason': str(error)}
             finally:
                 if adapter is not None:
                     adapter.close()
@@ -223,7 +232,13 @@ class MarketDataService:
                 if frames.get(timeframe)
             }
             if not feeds:
-                raise MarketDataError(f'No market-data source returned {timeframe} candles.')
+                reasons = [
+                    status.get('reason')
+                    for status in source_status.values()
+                    if status.get('reason')
+                ]
+                reason = reasons[0] if reasons else f'No market-data source returned {timeframe} candles.'
+                raise MarketDataError(reason)
             selected, quality = self._verify_candles(feeds, threshold)
             verified_candles[timeframe] = selected
             timeframe_quality[timeframe] = quality
@@ -259,12 +274,7 @@ class MarketDataService:
                 else 'Market data is unverified or conflicting; analysis is available but execution is blocked.'
             ),
         }
-        snapshot = MarketSnapshot(
-            **{
-                **snapshot.__dict__,
-                'data_quality': data_quality,
-            }
-        )
+        snapshot = replace(snapshot, data_quality=data_quality)
         return MarketDataBundle(
             snapshot=snapshot,
             candles={timeframe: verified_candles[timeframe] for timeframe in timeframes},
@@ -286,15 +296,30 @@ class MarketDataService:
     @staticmethod
     def _fetch_provider(name, provider, account, timeframes, candle_count):
         frames = {}
+        symbol = account.broker_symbol if name == 'MetaAPI' else account.canonical_asset or account.broker_symbol
+        account_identity = getattr(account, 'external_account_id', '') if name == 'MetaAPI' else ''
+        cache_identity = hashlib.sha256(
+            f'{name}:{account_identity}:{symbol}:{candle_count}'.encode('utf-8')
+        ).hexdigest()
+        cooldown_key = f'market-data-provider-cooldown:{name}'
+        if cache.get(cooldown_key):
+            raise MarketDataProviderError(name, rate_limited=True)
         for timeframe in timeframes:
+            data_key = f'market-data-candles:{cache_identity}:{timeframe}'
+            cached = cache.get(data_key)
+            if cached is not None:
+                frames[timeframe] = cached
+                continue
             try:
                 if name == 'MetaAPI':
                     candles = provider.candles(account, account.broker_symbol, timeframe, candle_count)
                 else:
-                    candles = provider.candles(account.canonical_asset or account.broker_symbol, timeframe, candle_count)
+                    candles = provider.candles(symbol, timeframe, candle_count)
                 frames[timeframe] = candles
+                cache.set(data_key, candles, timeout=_CACHE_SECONDS.get(timeframe, 60))
             except MarketDataProviderError as error:
                 if error.rate_limited:
+                    cache.set(cooldown_key, True, timeout=60)
                     raise
                 frames[timeframe] = []
         return frames
@@ -358,9 +383,12 @@ class MarketDataService:
 
         minimum_majority = len(feeds) // 2 + 1
         verified = len(compatible_sources) >= 2 and len(compatible_sources) >= minimum_majority
-        selected_source = MarketDataService._preferred_source(
-            {name: feeds[name] for name in compatible_sources or feeds.keys()}
+        selected_feeds = (
+            {name: feeds[name] for name in compatible_sources}
+            if verified
+            else feeds
         )
+        selected_source = MarketDataService._preferred_source(selected_feeds)
         return feeds[selected_source], {
             'verified': verified,
             'sources': sorted(compatible_sources),
