@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
-import { Bell, BrainCircuit, X } from 'lucide-react';
-import { authService, type AccountProfile, type MarketContext, type Mt5Health } from '../authentication/services/authService';
+import { Bell, BrainCircuit, Download, Eye, FileText, X } from 'lucide-react';
+import { authService, type AccountProfile, type MarketContext, type Mt5Health, type NewsProviderHealth, type StrategyReport } from '../authentication/services/authService';
 export function Dashboard() {
   const [health, setHealth] = useState<Mt5Health | null>(null);
   const [healthError, setHealthError] = useState(false);
@@ -15,6 +15,11 @@ export function Dashboard() {
   const [showTrainingModal, setShowTrainingModal] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{ accuracy?: number; precision?: number; recall?: number; winRate?: number; validationSamples?: number; reason?: string } | null>(null);
+  const [strategyReport, setStrategyReport] = useState<StrategyReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [newsProviderHealth, setNewsProviderHealth] = useState<NewsProviderHealth | null>(null);
+  const [newsProviderError, setNewsProviderError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -76,6 +81,28 @@ export function Dashboard() {
     }
   }
 
+  async function viewStrategyReport(strategy: 'day-trading' | 'scalping') {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      setStrategyReport(await authService.getStrategyReport(strategy));
+    } catch (error) {
+      setStrategyReport(null);
+      setReportError(error instanceof Error ? error.message : 'Unable to load the strategy report.');
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  async function downloadStrategyReport(strategy: 'day-trading' | 'scalping') {
+    setReportError(null);
+    try {
+      await authService.downloadStrategyReportPdf(strategy);
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : 'Unable to download the PDF report.');
+    }
+  }
+
   useEffect(() => {
     if (!trainingJob?.jobId || ['COMPLETE', 'ERROR'].includes(trainingJob.phase ?? '')) return;
     const refresh = () => authService.getTrainingStatus(trainingJob.jobId).then((result) => {
@@ -104,6 +131,21 @@ export function Dashboard() {
     authService.getMarketContext()
       .then(setMarketContext)
       .catch(() => setMarketContext({ status: 'UNAVAILABLE', reason: 'Market context is unavailable.' }));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = () => authService.getNewsProviderHealth()
+      .then((result) => {
+        if (active) {
+          setNewsProviderHealth(result);
+          setNewsProviderError(null);
+        }
+      })
+      .catch(() => { if (active) setNewsProviderError('News provider status is unavailable.'); });
+    refresh();
+    const interval = window.setInterval(refresh, 30000);
+    return () => { active = false; window.clearInterval(interval); };
   }, []);
 
   const healthAccounts = health?.accounts ?? [];
@@ -156,9 +198,33 @@ export function Dashboard() {
         <div><p className="eyebrow">DETERMINISTIC MARKET CONTEXT</p><h2>Market regime</h2></div>
         {marketContext?.status === 'HEALTHY' ? <div className="market-context-values"><strong>{marketContext.regime?.state}</strong><span>{marketContext.symbol} / {marketContext.timeframe} / {marketContext.candleCount} candles</span><span>Confidence {Math.round((marketContext.regime?.confidence ?? 0) * 100)}%</span></div> : <p className="mt5-health-empty">{marketContext?.reason ?? 'Loading market context.'}</p>}
       </section>
+      <section className="news-provider-card" aria-live="polite">
+        <div><p className="eyebrow">NEWS INTELLIGENCE / MULTI-SOURCE</p><h2>News provider health</h2><p>Configured sources are quota-aware; if a source is exhausted or unavailable, the next eligible source is tried.</p></div>
+        {newsProviderError ? <p className="strategy-report-error" role="alert">{newsProviderError}</p> : !newsProviderHealth ? <p className="strategy-report-message">Checking news providers...</p> : !newsProviderHealth.configured ? <p className="strategy-report-message">No news sources are configured.</p> : <><p className="news-provider-policy">At least {newsProviderHealth.requiredProviderCount} source(s) are requested per analysis when quota allows.</p><ul className="news-provider-list">{Object.keys(newsProviderHealth.providers).map((provider) => {
+          const quality = newsProviderHealth.quality.find((item) => item.provider === provider);
+          const quota = newsProviderHealth.quotas[provider];
+          const providerState = !quality?.observations ? 'CONFIGURED / NOT QUERIED' : quality.availability > 0 ? 'RESPONDING' : 'UNAVAILABLE';
+          const period = quota?.periodSeconds === 60 ? 'minute' : 'day';
+          return <li key={provider}><strong>{provider.replaceAll('_', ' ')}</strong><span>{providerState}</span><small>{quality?.observations ?? 0} calls observed / {Math.round((quality?.availability ?? 0) * 100)}% availability</small>{quota && <small>{quota.used}/{quota.limit} requests this {period} / {quota.remaining} remaining{quota.rateLimited ? ' / rate limited' : ''}</small>}</li>;
+        })}</ul></>}
+      </section>
+      <section className="strategy-reports-card">
+        <div className="strategy-reports-heading"><div><p className="eyebrow">DAILY SIGNAL AUDIT</p><h2>Strategy reports</h2><p>Review every recorded setup, its execution status, and the reason it was or was not executed.</p></div><FileText size={22} aria-hidden="true" /></div>
+        <div className="strategy-report-actions">
+          <div><strong>Day trading</strong><button type="button" onClick={() => void viewStrategyReport('day-trading')} disabled={reportLoading}><Eye size={16} aria-hidden="true" />View report</button><button type="button" onClick={() => void downloadStrategyReport('day-trading')}><Download size={16} aria-hidden="true" />Download PDF</button></div>
+          <div><strong>Scalping</strong><button type="button" onClick={() => void viewStrategyReport('scalping')} disabled={reportLoading}><Eye size={16} aria-hidden="true" />View report</button><button type="button" onClick={() => void downloadStrategyReport('scalping')}><Download size={16} aria-hidden="true" />Download PDF</button></div>
+        </div>
+        {reportLoading && <p className="strategy-report-message" role="status">Loading report...</p>}
+        {reportError && <p className="strategy-report-error" role="alert">{reportError}</p>}
+        {strategyReport && <div className="strategy-report-results">
+          <h3>{strategyReport.strategy.replaceAll('_', ' ')} / {strategyReport.date}</h3>
+          {strategyReport.rows.length === 0 ? <p className="strategy-report-message">No setups were recorded for this strategy on this date.</p> : <div className="strategy-report-table-wrap"><table className="strategy-report-table">
+            <thead><tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Decision</th><th>Executed</th><th>Reason</th></tr></thead>
+            <tbody>{strategyReport.rows.map((row) => <tr key={`${row.decision_id}:${row.candidate_id}`}><td>{new Date(row.timestamp).toLocaleTimeString()}</td><td>{row.symbol}</td><td>{row.signal}</td><td>{row.decision_state}</td><td>{row.executed} / {row.execution_status}</td><td>{row.reason || 'No reason recorded.'}</td></tr>)}</tbody>
+          </table></div>}
+        </div>}
+      </section>
       {showTrainingModal && <div className="training-modal-backdrop" role="presentation"><section className="training-modal" role="dialog" aria-modal="true" aria-labelledby="training-modal-title"><div className="training-modal-header"><div><p className="eyebrow">ATHENA MODEL ENGINE</p><h2 id="training-modal-title">{modelStatus?.trained && !training ? 'Model training' : 'Model not trained'}</h2></div><button type="button" className="modal-close" aria-label="Close training dialog" onClick={() => setShowTrainingModal(false)}><X size={18} /></button></div>{training ? <><div className="training-progress-track"><span style={{ width: `${trainingJob?.progress ?? 5}%` }} /></div><strong className="training-progress-value">{trainingJob?.progress ?? 5}%</strong><p className="training-current-phase">{trainingJob?.phase?.replaceAll('_', ' ') ?? 'STARTING'}</p><p className="training-current-message">{trainingJob?.message ?? 'Preparing model training.'}</p></> : trainingResult ? <p className="training-current-message model-training-failed">{trainingResult}</p> : modelStatus?.trained ? <p className="training-current-message">Model is trained and connected to execution. Last trained {formatTrainingDate(modelStatus.trainedAt)}.</p> : <p className="training-current-message">No trained model is available. Train ATHENA before relying on model-assisted analysis.</p>}<div className="training-modal-actions">{training && <button type="button" className="model-training-button" onClick={() => setShowTrainingModal(false)}>Continue in background</button>}{!training && !modelStatus?.trained && <button type="button" className="model-training-button" onClick={() => void trainModel()} disabled={!defaultAccountId}><BrainCircuit size={16} aria-hidden="true" />Start training</button>}{!training && (modelStatus?.trained || trainingResult) && <button type="button" className="model-training-button" onClick={() => setShowTrainingModal(false)}>Close</button>}</div></section></div>}
     </main>
   );
 }
-
-

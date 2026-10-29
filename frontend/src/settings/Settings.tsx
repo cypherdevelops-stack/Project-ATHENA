@@ -13,7 +13,7 @@ type AccountDraft = {
   login: string;
   password: string;
   server: string;
-  connectionMethod: 'BROKER' | 'METAAPI';
+  connectionMethod: 'BROKER' | 'METAAPI' | 'DERIV';
   apiAccountId?: string;
 };
 
@@ -148,16 +148,18 @@ export function Settings() {
 
     const draft = {
       accountNickname: String(data.get('accountNickname') ?? ''),
-      platform: String(data.get('platform') ?? 'MT5'),
-      login: connectionMethod === 'METAAPI' ? String(data.get('apiAccountId') ?? '') : String(data.get('login') ?? ''),
-      password: String(data.get(connectionMethod === 'METAAPI' ? 'apiToken' : 'password') ?? ''),
+      platform: connectionMethod === 'DERIV' ? 'DERIV' : String(data.get('platform') ?? 'MT5'),
+      login: connectionMethod === 'METAAPI'
+        ? String(data.get('apiAccountId') ?? '')
+        : connectionMethod === 'DERIV' ? '' : String(data.get('login') ?? ''),
+      password: String(data.get(connectionMethod === 'METAAPI' ? 'apiToken' : connectionMethod === 'DERIV' ? 'derivToken' : 'password') ?? ''),
       server: String(data.get('server') ?? ''),
       connectionMethod,
       ...(connectionMethod === 'METAAPI' ? { apiAccountId: String(data.get('apiAccountId') ?? '') } : {}),
     };
     setAccountDraft(draft);
 
-    if (connectionMethod === 'METAAPI') {
+    if (connectionMethod !== 'BROKER') {
       setModalStep(2);
       setHandshakeLoading(true);
       setError(null);
@@ -255,10 +257,10 @@ export function Settings() {
             <article className={`account-card ${account?.id === availableAccount.id ? 'account-card-active' : ''}`} onClick={() => setAccount(availableAccount)} onKeyDown={(event) => handleAccountCardKeyDown(event, availableAccount)} tabIndex={0} key={availableAccount.id}>
               <span className="account-card-icon"><ShieldCheck size={20} aria-hidden="true" /></span>
               <strong>{availableAccount.displayName}</strong>
-              <span>{availableAccount.platform} / Login {availableAccount.login}{availableAccount.connectionMethod === 'METAAPI' ? ' / MetaAPI' : ''}</span>
+              <span>{availableAccount.platform} / Login {availableAccount.login}{availableAccount.connectionMethod === 'BROKER' ? '' : ` / ${availableAccount.connectionMethod === 'METAAPI' ? 'MetaAPI' : 'Deriv'}`}</span>
               <small>{availableAccount.server}</small>
               <div className="account-card-actions">
-                <button type="button" className={`account-trade-toggle ${availableAccount.enabled ? 'account-trade-toggle-on' : ''}`} onClick={(event) => handleAccountToggle(event, availableAccount)} disabled={availableAccount.connectionMethod === 'METAAPI' || updatingAccountId === availableAccount.id} aria-pressed={availableAccount.enabled} title={availableAccount.connectionMethod === 'METAAPI' ? 'MetaAPI trading execution is not supported yet' : `${availableAccount.enabled ? 'Disable' : 'Enable'} trading for ${availableAccount.displayName}`}>
+                <button type="button" className={`account-trade-toggle ${availableAccount.enabled ? 'account-trade-toggle-on' : ''}`} onClick={(event) => handleAccountToggle(event, availableAccount)} disabled={availableAccount.connectionMethod !== 'BROKER' || updatingAccountId === availableAccount.id} aria-pressed={availableAccount.enabled} title={availableAccount.connectionMethod !== 'BROKER' ? `${availableAccount.connectionMethod === 'METAAPI' ? 'MetaAPI' : 'Deriv'} trading execution is not supported yet` : `${availableAccount.enabled ? 'Disable' : 'Enable'} trading for ${availableAccount.displayName}`}>
                   {availableAccount.enabled ? 'ON' : 'OFF'}
                 </button>
                 <button type="button" className="account-action-button" onClick={(event) => { event.stopPropagation(); setEditingAccount(availableAccount); }} title={`Configure ${availableAccount.displayName}`} aria-label={`Configure ${availableAccount.displayName}`}><Settings2 size={16} aria-hidden="true" /></button>
@@ -278,12 +280,15 @@ export function Settings() {
           {modalStep === 1 && <>
             <p className="wizard-lead">Let's connect your trading account.</p>
             <label>Account nickname<input name="accountNickname" required placeholder="Primary gold account" /></label>
-            <label>Connection method<select name="connectionMethod" value={connectionMethod} onChange={(event) => setConnectionMethod(event.target.value as AccountDraft['connectionMethod'])}><option value="BROKER">Broker login</option><option value="METAAPI">MetaAPI</option></select></label>
+            <label>Connection method<select name="connectionMethod" value={connectionMethod} onChange={(event) => setConnectionMethod(event.target.value as AccountDraft['connectionMethod'])}><option value="BROKER">Broker login</option><option value="METAAPI">MetaAPI</option><option value="DERIV">Deriv</option></select></label>
             {connectionMethod === 'BROKER' && <label>Platform<select name="platform" defaultValue="MT5"><option value="MT4">MT4</option><option value="MT5">MT5</option><option value="CTRADER">cTrader</option><option value="TRADINGVIEW">TradingView</option></select></label>}
             {connectionMethod === 'METAAPI' ? <>
               <label>MetaAPI account ID<input name="apiAccountId" required autoComplete="off" /></label>
               <label>MetaAPI API token<input name="apiToken" type="password" required autoComplete="new-password" placeholder="Paste your MetaAPI API token" /></label>
               <p className="wizard-lead">MetaAPI must be deployed. ATHENA will verify balance, equity, leverage, trading permission, open positions, and available symbols before onboarding.</p>
+            </> : connectionMethod === 'DERIV' ? <>
+              <label>Deriv API token<input name="derivToken" type="password" required autoComplete="new-password" placeholder="Paste your Deriv API token" /></label>
+              <p className="wizard-lead">ATHENA will validate the token with Deriv and confirm the associated account. Deriv trading execution is not yet available.</p>
             </> : <>
               <label>Login<input name="login" required autoComplete="username" /></label>
               <label>Password<input name="password" type="password" required autoComplete="current-password" /></label>
@@ -292,12 +297,12 @@ export function Settings() {
             {error && <p role="alert">{error}</p>}
             <div><button type="submit" className="add-account-button">Connect & Discover</button><button type="button" className="form-cancel" onClick={closeAccountModal}>Cancel</button></div>
           </>}
-          {modalStep === 2 && !handshakeComplete && <div className="modal-message"><span className="handshake-pulse" aria-hidden="true" /><p>{handshakeLoading ? accountDraft?.connectionMethod === 'METAAPI' ? 'Validating the MetaAPI account and retrieving its account details.' : 'Establishing a secure handshake with the demo trading server.' : error ? 'Handshake failed. Check the connection details and try again.' : 'Handshake complete. Continue to review the discovered account.'}</p>{error && <p className="onboarding-error-detail" role="alert">{error}</p>}<button type="submit" className="add-account-button" disabled={handshakeLoading || !discovery}>{handshakeLoading ? 'Connecting...' : 'Continue'}</button></div>}
-          {modalStep === 2 && handshakeComplete && discovery && <><p className="wizard-lead">ATHENA found your account.</p><div className="discovery-list"><span>Broker <b>{discovery.broker}</b></span><span>Server <b>{discovery.server}</b></span><span>Account <b>********</b></span><span>Balance <b>{discovery.currency} {Number(discovery.balance).toLocaleString()}</b></span>{discovery.equity !== undefined && <span>Equity <b>{discovery.currency} {Number(discovery.equity).toLocaleString()}</b></span>}<span>Leverage <b>1:{discovery.leverage}</b></span><span>Account mode <b>{discovery.accountMode}</b></span><span>Platform <b>{discovery.platform}</b></span><span>Market data <b>{discovery.marketData}</b></span><span>Existing positions <b>{discovery.existingPositions}</b></span></div><div><button type="submit" className="add-account-button">Continue</button></div></>}
+          {modalStep === 2 && !handshakeComplete && <div className="modal-message"><span className="handshake-pulse" aria-hidden="true" /><p>{handshakeLoading ? accountDraft?.connectionMethod === 'METAAPI' ? 'Validating the MetaAPI account and retrieving its account details.' : accountDraft?.connectionMethod === 'DERIV' ? 'Validating the Deriv API token and retrieving its account details.' : 'Establishing a secure handshake with the demo trading server.' : error ? 'Handshake failed. Check the connection details and try again.' : 'Handshake complete. Continue to review the discovered account.'}</p>{error && <p className="onboarding-error-detail" role="alert">{error}</p>}<button type="submit" className="add-account-button" disabled={handshakeLoading || !discovery}>{handshakeLoading ? 'Connecting...' : 'Continue'}</button></div>}
+          {modalStep === 2 && handshakeComplete && discovery && <><p className="wizard-lead">ATHENA found your account.</p><div className="discovery-list"><span>Broker <b>{discovery.broker}</b></span><span>Server <b>{discovery.server}</b></span><span>Account <b>********</b></span><span>Balance <b>{discovery.currency} {Number(discovery.balance).toLocaleString()}</b></span>{discovery.equity !== undefined && <span>Equity <b>{discovery.currency} {Number(discovery.equity).toLocaleString()}</b></span>}<span>Leverage <b>{accountDraft?.connectionMethod === 'DERIV' ? 'Not provided by Deriv' : `1:${discovery.leverage}`}</b></span><span>Account mode <b>{discovery.accountMode}</b></span><span>Platform <b>{discovery.platform}</b></span><span>Market data <b>{discovery.marketData}</b></span><span>Existing positions <b>{discovery.existingPositions}</b></span></div><div><button type="submit" className="add-account-button">Continue</button></div></>}
           {modalStep === 3 && <><p className="wizard-lead">How should ATHENA manage this account?</p><label>Account purpose<select defaultValue="PERSONAL"><option>Personal</option><option>Funded</option><option>Evaluation</option></select></label><label>Risk mode<select defaultValue="CONSERVATIVE"><option>Conservative</option><option>Balanced</option><option>Custom</option></select></label><label>Execution authority<select defaultValue="SEMI_AUTONOMOUS"><option value="MANUAL">Manual</option><option value="SEMI_AUTONOMOUS">Semi-Autonomous</option><option value="AUTONOMOUS">Autonomous</option></select></label><div><button type="submit" className="add-account-button">Continue</button></div></>}
           {modalStep === 4 && <><p className="wizard-lead">Set the account safety boundaries.</p><div className="wizard-fields"><label>Daily loss limit<input type="number" defaultValue="3" min="0" step="0.1" /></label><label>Overall loss limit<input type="number" defaultValue="10" min="0" step="0.1" /></label><label>Risk/trade<input type="number" defaultValue="0.25" min="0" step="0.05" /></label><label>Maximum exposure<input type="number" defaultValue="1" min="0" /></label><label>Maximum positions<input type="number" defaultValue="1" min="1" /></label><label>News restrictions<select defaultValue="HIGH_IMPACT"><option>High impact only</option><option>All scheduled news</option><option>None</option></select></label><label>Weekend policy<select defaultValue="CLOSE"><option>Close before weekend</option><option>Hold positions</option></select></label></div><div><button type="submit" className="add-account-button">Continue</button></div></>}
           {modalStep === 5 && <><p className="wizard-lead">Choose the trading scope.</p><label>Assets<input defaultValue="XAUUSD" /></label><label>Strategies<select defaultValue="SCALPING_DAY"><option>Scalping + Day Trading</option><option>Scalping only</option><option>Day Trading only</option></select></label><label>Sessions<select defaultValue="LONDON_NEW_YORK"><option>London + New York</option><option>All sessions</option><option>Custom</option></select></label><label>Correlation<select defaultValue="ENABLED"><option>Enabled</option><option>Disabled</option></select></label><label>Execution preferences<select defaultValue="COST_AWARE"><option>Cost aware</option><option>Standard</option></select></label><div><button type="submit" className="add-account-button">Continue</button></div></>}
-          {modalStep === 6 && <><p className="wizard-lead">ACCOUNT READY</p><div className="review-list"><span>Connection <b>✓</b></span><span>Broker constraints <b>{discovery?.executionValidation === 'READY' ? 'Validated' : 'Read-only'}</b></span><span>Risk policy <b>✓</b></span><span>Trading permission <b>{discovery?.tradeAllowed ? 'Available' : 'Unavailable'}</b></span><span>Safety gates <b>✓</b></span></div>{accountDraft?.connectionMethod === 'METAAPI' && <p className="wizard-lead">MetaAPI accounts are verified and saved, but cannot be enabled for trading until the MetaAPI execution adapter is available.</p>}<label>ATHENA Authority<select defaultValue="SEMI_AUTONOMOUS"><option>Semi-Autonomous</option><option>Manual</option><option>Autonomous</option></select></label><div><button type="submit" className="add-account-button">Activate Account</button></div></>}
+          {modalStep === 6 && <><p className="wizard-lead">ACCOUNT READY</p><div className="review-list"><span>Connection <b>✓</b></span><span>Broker constraints <b>{discovery?.executionValidation === 'READY' ? 'Validated' : 'Read-only'}</b></span><span>Risk policy <b>✓</b></span><span>Trading permission <b>{discovery?.tradeAllowed ? 'Available' : 'Unavailable'}</b></span><span>Safety gates <b>✓</b></span></div>{accountDraft?.connectionMethod !== 'BROKER' && <p className="wizard-lead">{accountDraft?.connectionMethod === 'METAAPI' ? 'MetaAPI' : 'Deriv'} accounts are verified and saved, but cannot be enabled for trading until an execution adapter is available.</p>}<label>ATHENA Authority<select defaultValue="SEMI_AUTONOMOUS"><option>Semi-Autonomous</option><option>Manual</option><option>Autonomous</option></select></label><div><button type="submit" className="add-account-button">Activate Account</button></div></>}
           </form>
         </div>}
         {editingAccount && <div className="account-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setEditingAccount(null)}>
@@ -306,11 +311,11 @@ export function Settings() {
             <label>Account name<input name="displayName" defaultValue={editingAccount.displayName} required /></label>
             <label>Account type<select name="accountType" defaultValue={editingAccount.accountType}><option value="PERSONAL">Personal</option><option value="DEMO">Demo</option><option value="FUNDED">Funded</option></select></label>
             <label>Allowed instruments<input name="allowedInstruments" defaultValue={editingAccount.allowedInstruments.join(', ')} placeholder="XAUUSD, EURUSD" /></label>
-            <label>{editingAccount.connectionMethod === 'METAAPI' ? 'MetaAPI API token' : 'Broker password'}<input name="password" type="password" autoComplete="new-password" placeholder="Enter to update saved credentials" /></label>
+            <label>{editingAccount.connectionMethod === 'METAAPI' ? 'MetaAPI API token' : editingAccount.connectionMethod === 'DERIV' ? 'Deriv API token' : 'Broker password'}<input name="password" type="password" autoComplete="new-password" placeholder="Enter to update saved credentials" /></label>
             {editingAccount.connectionMethod === 'BROKER' && <label>MT5 terminal path<input name="terminalPath" defaultValue={editingAccount.terminalPath} placeholder="Optional terminal64.exe path" /></label>}
             <div className="wizard-fields"><label>Risk/trade (%)<input name="riskPerTrade" type="number" defaultValue={editingAccount.riskPerTrade} min="0" step="0.05" /></label><label>Maximum positions<input name="maxConcurrentPositions" type="number" defaultValue={editingAccount.maxConcurrentPositions} min="1" /></label><label>Daily loss limit (%)<input name="maxDailyDrawdown" type="number" defaultValue={editingAccount.maxDailyDrawdown} min="0" step="0.1" /></label><label>ATHENA safety limit (%)<input name="athenaSafetyDrawdown" type="number" defaultValue={editingAccount.athenaSafetyDrawdown} min="0" step="0.1" /></label><label>Overall loss limit (%)<input name="maxOverallDrawdown" type="number" defaultValue={editingAccount.maxOverallDrawdown} min="0" step="0.1" /></label></div>
-            <label className="account-enabled-toggle"><input name="enabled" type="checkbox" defaultChecked={editingAccount.enabled} disabled={editingAccount.connectionMethod === 'METAAPI'} /> Enable account for ATHENA</label>
-            {editingAccount.connectionMethod === 'METAAPI' && <p className="wizard-lead">MetaAPI execution is not yet available; this account can be configured but not enabled for trading.</p>}
+            <label className="account-enabled-toggle"><input name="enabled" type="checkbox" defaultChecked={editingAccount.enabled} disabled={editingAccount.connectionMethod !== 'BROKER'} /> Enable account for ATHENA</label>
+            {editingAccount.connectionMethod !== 'BROKER' && <p className="wizard-lead">{editingAccount.connectionMethod === 'METAAPI' ? 'MetaAPI' : 'Deriv'} execution is not yet available; this account can be configured but not enabled for trading.</p>}
             <div><button type="submit" className="add-account-button" disabled={configSaving}>{configSaving ? 'Saving...' : 'Save settings'}</button><button type="button" className="form-cancel" onClick={() => setEditingAccount(null)}>Cancel</button></div>
           </form>
         </div>}

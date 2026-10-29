@@ -3,8 +3,10 @@ import { useAuth } from './authentication/hooks/useAuth'
 import { AuthenticationLayout } from './authentication/components/AuthenticationLayout'
 import { ForgotPassword } from './authentication/pages/ForgotPassword'
 import { Login } from './authentication/pages/Login'
+import { ResetPassword } from './authentication/pages/ResetPassword'
 import { SignUp } from './authentication/pages/SignUp'
 import { SplashScreen } from './authentication/pages/SplashScreen'
+import { VerifyEmail } from './authentication/pages/VerifyEmail'
 import { Dashboard } from './dashboard/Dashboard'
 import { Backtesting } from './backtesting/Backtesting'
 import { Executioner } from './executioner/Executioner'
@@ -21,12 +23,20 @@ function App() {
     return <AuthenticationLayout><ForgotPassword /></AuthenticationLayout>
   }
 
+  if (path === '/reset-password') {
+    return <AuthenticationLayout><ResetPassword /></AuthenticationLayout>
+  }
+
   if (path === '/login') {
     return <AuthenticationLayout><Login /></AuthenticationLayout>
   }
 
   if (path === '/sign-up') {
     return <AuthenticationLayout><SignUp /></AuthenticationLayout>
+  }
+
+  if (path.startsWith('/verify-email')) {
+    return <AuthenticationLayout><VerifyEmail /></AuthenticationLayout>
   }
 
   if (status === 'authenticated' && session?.user) {

@@ -4,7 +4,7 @@ export type AccountProfile = {
   id: number;
   displayName: string;
   platform: string;
-  connectionMethod: 'BROKER' | 'METAAPI';
+  connectionMethod: 'BROKER' | 'METAAPI' | 'DERIV';
   login: string;
   broker: string;
   server: string;
@@ -167,6 +167,49 @@ export type MarketContext = {
   regime?: { state: string; confidence: number; reason: string };
   status: string;
   reason?: string;
+};
+
+export type StrategyReportRow = {
+  timestamp: string;
+  account_id: string;
+  symbol: string;
+  strategy: string;
+  decision_id: string;
+  candidate_id: string;
+  signal: string;
+  decision_state: string;
+  score: string;
+  entry_zone: string;
+  candidate: string;
+  executed: string;
+  execution_status: string;
+  reason: string;
+};
+
+export type StrategyReport = {
+  strategy: string;
+  date: string;
+  rows: StrategyReportRow[];
+};
+
+export type NewsProviderHealth = {
+  configured: boolean;
+  requiredProviderCount: number;
+  providers: Record<string, boolean>;
+  quality: Array<{
+    provider: string;
+    observations: number;
+    availability: number;
+    averageLatencyMs: number | null;
+  }>;
+  quotas: Record<string, {
+    limit: number;
+    periodSeconds: number;
+    used: number;
+    remaining: number;
+    available: boolean;
+    rateLimited?: boolean;
+  }>;
 };
 
 export type BacktestingMarketData = {
@@ -345,6 +388,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function downloadStrategyReportPdf(strategy: 'day-trading' | 'scalping') {
+  const response = await fetch(`${API_BASE_URL}/strategies/reports/${strategy}/pdf`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    let detail = `Report download failed: ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      detail = payload.detail ?? detail;
+    } catch {
+      // Keep the HTTP status when the server does not return JSON.
+    }
+    throw new Error(detail);
+  }
+  const blob = await response.blob();
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = `${strategy}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(downloadUrl);
+}
+
 export const authService = {
   getSession: () => request<AuthSession>('/auth/session'),
   login: (email: string, password: string) =>
@@ -357,11 +425,31 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify({ email, password, passwordConfirmation }),
     }),
+  sendVerificationCode: (email: string) =>
+    request<{ detail: string }>('/auth/send-verification-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  verifyEmail: (email: string, code: string) =>
+    request<{ detail: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   requestPasswordReset: (email: string) =>
     request<{ detail: string }>('/auth/password-reset', {
       method: 'POST',
       body: JSON.stringify({ email }),
+    }),
+  verifyPasswordResetLink: (uid: string, token: string) =>
+    request<{ detail: string }>('/auth/password-reset/verify', {
+      method: 'POST',
+      body: JSON.stringify({ uid, token }),
+    }),
+  completePasswordReset: (uid: string, token: string, password: string, passwordConfirmation: string) =>
+    request<{ detail: string }>('/auth/password-reset/complete', {
+      method: 'POST',
+      body: JSON.stringify({ uid, token, password, passwordConfirmation }),
     }),
   getAccount: () => request<AccountProfile>('/account/'),
   getAccounts: () => request<AccountsResponse>('/account/list'),
@@ -411,12 +499,12 @@ export const authService = {
     request<JournalSession>('/journal/sessions/create', { method: 'POST', body: JSON.stringify(payload) }),
   createJournalEvent: (sessionId: number, payload: { eventType: string; body: string }) =>
     request<JournalEvent>(`/journal/sessions/${sessionId}/events`, { method: 'POST', body: JSON.stringify(payload) }),
-  createAccount: (account: { accountNickname: string; platform: string; login: string; password: string; server: string; connectionMethod?: 'BROKER' | 'METAAPI'; apiAccountId?: string; canonicalAsset?: string; brokerSymbol?: string; marketDiscovery?: MarketDiscovery; allowedInstruments?: string[] }) =>
+  createAccount: (account: { accountNickname: string; platform: string; login: string; password: string; server: string; connectionMethod?: 'BROKER' | 'METAAPI' | 'DERIV'; apiAccountId?: string; canonicalAsset?: string; brokerSymbol?: string; marketDiscovery?: MarketDiscovery; allowedInstruments?: string[] }) =>
     request<AccountProfile>('/account/create', {
       method: 'POST',
       body: JSON.stringify(account),
     }),
-  discoverAccount: (account: { platform: string; login: string; password: string; server: string; connectionMethod?: 'BROKER' | 'METAAPI'; apiAccountId?: string }) =>
+  discoverAccount: (account: { platform: string; login: string; password: string; server: string; connectionMethod?: 'BROKER' | 'METAAPI' | 'DERIV'; apiAccountId?: string }) =>
     request<DiscoveryResponse>('/account/onboarding/discover', {
       method: 'POST',
       body: JSON.stringify(account),
@@ -430,6 +518,10 @@ export const authService = {
   scanSmc: (accountId: number, timeframe: 'M1' | 'M5') => request<SmcScan>(`/smc/scan?accountId=${accountId}&timeframe=${timeframe}`),
   scanScalpingCandidates: (accountId: number) => request<ScalpingCandidateScan>(`/strategies/scalping/candidates?accountId=${accountId}`),
   getDayTradingState: (accountId: number) => request<DayTradingState>(`/strategies/day-trading/state?accountId=${accountId}`),
+  getStrategyReport: (strategy: 'day-trading' | 'scalping') =>
+    request<StrategyReport>(`/strategies/reports/${strategy}`),
+  getNewsProviderHealth: () => request<NewsProviderHealth>('/news/providers/health'),
+  downloadStrategyReportPdf,
   updateAccount: (updates: Record<string, unknown> & { accountId?: number }) =>
     request<AccountProfile>('/account/update', {
       method: 'PATCH',

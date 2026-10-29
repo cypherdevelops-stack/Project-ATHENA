@@ -581,6 +581,34 @@ body {
 .market-context-card h2 { margin: 0.25rem 0 0; }
 .market-context-values { display: flex; align-items: baseline; flex-wrap: wrap; gap: 1rem; color: var(--cyan-muted); }
 .market-context-values strong { color: var(--white); font-size: 1.5rem; }
+.news-provider-card { display: grid; gap: 0.8rem; margin-top: 1rem; padding: 1.25rem; background: rgba(13, 29, 34, 0.78); border: 1px solid var(--line); }
+.news-provider-card h2 { margin: 0.25rem 0 0.5rem; color: var(--white); }
+.news-provider-card p { margin: 0; color: var(--cyan-muted); font-size: 0.78rem; }
+.news-provider-policy { color: var(--cyan) !important; }
+.news-provider-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0.65rem; margin: 0; padding: 0; list-style: none; }
+.news-provider-list li { display: grid; gap: 0.25rem; padding: 0.75rem; background: rgba(10, 24, 28, 0.85); border: 1px solid var(--line); }
+.news-provider-list strong { color: var(--white); text-transform: capitalize; }
+.news-provider-list span { color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 0.65rem; }
+.news-provider-list small { color: var(--cyan-muted); font-size: 0.68rem; }
+.strategy-reports-card { display: grid; gap: 1rem; margin-top: 1rem; padding: 1.25rem; background: rgba(13, 29, 34, 0.78); border: 1px solid var(--line); }
+.strategy-reports-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; color: var(--cyan); }
+.strategy-reports-heading h2 { margin: 0.25rem 0 0.5rem; color: var(--white); }
+.strategy-reports-heading p:last-child { margin: 0; color: var(--cyan-muted); }
+.strategy-report-actions { display: grid; gap: 0.75rem; }
+.strategy-report-actions > div { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; padding: 0.75rem 0; border-top: 1px solid var(--line); }
+.strategy-report-actions strong { min-width: 8rem; color: var(--white); }
+.strategy-report-actions button { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.7rem; color: var(--cyan); background: transparent; border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 0.72rem; }
+.strategy-report-actions button:hover:not(:disabled) { border-color: var(--cyan); background: rgba(55, 214, 220, 0.08); }
+.strategy-report-actions button:disabled { cursor: wait; opacity: 0.6; }
+.strategy-report-message { margin: 0; color: var(--cyan-muted); font-size: 0.8rem; }
+.strategy-report-error { margin: 0; color: #ff8b78; font-size: 0.8rem; }
+.strategy-report-results { display: grid; gap: 0.75rem; }
+.strategy-report-results h3 { margin: 0; color: var(--white); font-size: 0.85rem; text-transform: uppercase; }
+.strategy-report-table-wrap { overflow-x: auto; }
+.strategy-report-table { width: 100%; border-collapse: collapse; color: var(--cyan-muted); font-size: 0.72rem; text-align: left; }
+.strategy-report-table th, .strategy-report-table td { min-width: 5rem; padding: 0.65rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.strategy-report-table th { color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 0.63rem; text-transform: uppercase; }
+.strategy-report-table td:last-child { min-width: 14rem; }
 .default-account-card { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; margin-top: 1.5rem; padding: 1.25rem; background: rgba(13, 29, 34, 0.78); border: 1px solid var(--line); }
 .default-account-card h2 { margin: 0.25rem 0 0.5rem; }
 .default-account-card p { max-width: 44rem; margin: 0; color: var(--cyan-muted); }

@@ -24,3 +24,4 @@ python-dotenv==1.2.3
 sqlparse==0.6.0
 tzdata==2026.3
 psycopg2
+websocket-client==1.8.0
