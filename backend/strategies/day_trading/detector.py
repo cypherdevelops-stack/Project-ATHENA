@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from backend.smc.detector import detect_entry_confirmation
 from backend.execution.xgboost_engine import XGBoostEngine
+from backend.smc.detector import detect_entry_confirmation
 
 
 def _detect_pullback_structure(m15_candles: list[dict], h1_candles: list[dict],
@@ -225,4 +225,4 @@ def generate_day_trading_candidates(*, account, broker_symbol: str, current_pric
         if decision_state in {'DEVELOPING', 'RISK_APPROVED', 'BLOCKED'}:
             candidates.append(candidate)
 
-    return candidates
+        return candidates

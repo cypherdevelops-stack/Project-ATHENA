@@ -14,13 +14,15 @@ REPLAY_TIMEFRAMES = ('M1', 'M5', 'H1')
 
 def session_candles(session, timeframe=None):
     selected = timeframe or session.timeframe
+    if session.dataset and selected != session.dataset.timeframe:
+        return []
     query = HistoricalCandle.objects.filter(
         user_id=session.user_id,
         account_id=session.account_id,
         symbol=session.symbol,
         timeframe=selected,
     )
-    if session.dataset and selected == session.dataset.timeframe:
+    if session.dataset:
         query = query.filter(dataset=session.dataset)
     if session.start_time is not None:
         query = query.filter(timestamp__gte=session.start_time)
@@ -94,6 +96,10 @@ def serialize_decision(decision):
 @transaction.atomic(using='backtesting')
 def create_replay(*, user, account, timeframe, candle_count, slippage=0.0, commission=0.0,
                   dataset=None, start_time=None, end_time=None):
+    if dataset is not None and (
+        dataset.user_id != user.pk or dataset.account_id != account.pk
+    ):
+        raise ValueError('The selected dataset does not belong to this user and account.')
     if dataset is None:
         bundle = market_data_service.fetch(account, timeframes=REPLAY_TIMEFRAMES, candle_count=candle_count)
         symbol = account.broker_symbol

@@ -259,3 +259,121 @@ class MetaApiAccountOnboardingTests(TestCase):
         self.assertEqual(account.password_encrypted, 'rotated-encrypted-token')
         self.assertEqual(str(account.balance), '1400.00')
         self.assertEqual(account.handshake_status, 'SUCCESS')
+
+
+class DerivAccountOnboardingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='deriv@example.com', password='Strong-password-123')
+        self.client.force_login(self.user)
+        self.verified_account = {
+            'account_id': 'CR12345',
+            'platform': 'DERIV',
+            'broker': 'Deriv',
+            'server': 'Deriv',
+            'balance': '345.67',
+            'equity': '345.67',
+            'leverage': 1,
+            'currency': 'EUR',
+            'account_mode': 'VIRTUAL',
+            'trade_allowed': False,
+            'market_discovery': {
+                'canonicalAsset': '',
+                'brokerSymbol': None,
+                'symbols': [],
+                'assetMatches': [],
+                'marketData': 'UNAVAILABLE',
+            },
+        }
+
+    def test_discovery_validates_token_and_returns_deriv_account(self):
+        with patch('backend.accounts.views.verify_deriv_handshake', return_value=self.verified_account) as verify:
+            response = self.client.post('/api/account/onboarding/discover', data=json.dumps({
+                'connectionMethod': 'DERIV',
+                'password': 'private-deriv-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        discovery = response.json()['discovery']
+        self.assertEqual(discovery['platform'], 'DERIV')
+        self.assertEqual(discovery['login'], 'CR12345')
+        self.assertFalse(discovery['tradeAllowed'])
+        self.assertEqual(discovery['executionValidation'], 'API_READ_ONLY')
+        verify.assert_called_once_with('private-deriv-token')
+
+    def test_account_creation_revalidates_and_encrypts_deriv_token(self):
+        with patch('backend.accounts.views.verify_deriv_handshake', return_value=self.verified_account), patch(
+            'backend.accounts.views.encrypt_password',
+            return_value='encrypted-deriv-token',
+        ):
+            response = self.client.post('/api/account/create', data=json.dumps({
+                'accountNickname': 'Deriv account',
+                'connectionMethod': 'DERIV',
+                'password': 'private-deriv-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotIn('private-deriv-token', response.content.decode())
+        account = Account.objects.get(user=self.user)
+        self.assertEqual(account.connection_method, 'DERIV')
+        self.assertEqual(account.external_account_id, 'CR12345')
+        self.assertEqual(account.login, 'CR12345')
+        self.assertEqual(account.platform, 'DERIV')
+        self.assertEqual(account.password_encrypted, 'encrypted-deriv-token')
+        self.assertEqual(str(account.balance), '345.67')
+        self.assertFalse(account.trade_allowed)
+        self.assertFalse(account.enabled)
+
+    def test_invalid_deriv_token_does_not_create_account(self):
+        from .deriv import DerivHandshakeError
+
+        with patch(
+            'backend.accounts.views.verify_deriv_handshake',
+            side_effect=DerivHandshakeError('Deriv rejected the token.'),
+        ):
+            response = self.client.post('/api/account/create', data=json.dumps({
+                'accountNickname': 'Invalid Deriv account',
+                'connectionMethod': 'DERIV',
+                'password': 'invalid-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(Account.objects.filter(user=self.user).count(), 0)
+
+    def test_deriv_account_cannot_be_enabled_without_execution_adapter(self):
+        account = Account.objects.create(
+            user=self.user,
+            display_name='Deriv account',
+            connection_method='DERIV',
+        )
+
+        response = self.client.patch('/api/account/update', data=json.dumps({
+            'accountId': account.pk,
+            'enabled': True,
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 422)
+        account.refresh_from_db()
+        self.assertFalse(account.enabled)
+
+    def test_deriv_token_update_revalidates_and_encrypts_token(self):
+        account = Account.objects.create(
+            user=self.user,
+            display_name='Deriv account',
+            connection_method='DERIV',
+            external_account_id='CR12345',
+        )
+        with patch('backend.accounts.views.verify_deriv_handshake', return_value=self.verified_account) as verify, patch(
+            'backend.accounts.views.encrypt_password',
+            return_value='rotated-deriv-token',
+        ):
+            response = self.client.patch('/api/account/update', data=json.dumps({
+                'accountId': account.pk,
+                'password': 'rotated-token',
+            }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        verify.assert_called_once_with('rotated-token')
+        account.refresh_from_db()
+        self.assertEqual(account.password_encrypted, 'rotated-deriv-token')
+        self.assertEqual(account.login, 'CR12345')
+        self.assertEqual(account.handshake_status, 'SUCCESS')

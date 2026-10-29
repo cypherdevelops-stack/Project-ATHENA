@@ -1,8 +1,41 @@
 from __future__ import annotations
 
+from datetime import timedelta
+import re
 from time import perf_counter
 
+from django.utils import timezone
+
 from .models import NewsProviderQuality
+
+
+def provider_quota_status(*, provider_name: str, limits: dict, now=None) -> dict:
+    now = now or timezone.now()
+    period_seconds = int(limits.get('period_seconds', 86400))
+    limit = int(limits.get('limit', 0))
+    if period_seconds <= 0 or limit <= 0:
+        raise ValueError(f'Invalid request quota configured for {provider_name}.')
+    window_start = now - timedelta(seconds=period_seconds)
+    metrics = NewsProviderQuality.objects.filter(
+        provider_name=provider_name,
+        observed_at__gte=window_start,
+    )
+    used = metrics.count()
+    latest = metrics.order_by('-observed_at').first()
+    rate_limited = bool(
+        latest
+        and latest.error
+        and re.search(r'\b429\b|rate.?limit|quota exceeded', latest.error, re.IGNORECASE)
+        and latest.observed_at >= now - timedelta(seconds=min(period_seconds, 60))
+    )
+    return {
+        'limit': limit,
+        'periodSeconds': period_seconds,
+        'used': used,
+        'remaining': 0 if rate_limited else max(0, limit - used),
+        'available': used < limit and not rate_limited,
+        'rateLimited': rate_limited,
+    }
 
 
 def observe_provider_call(*, provider_name: str, fetch, symbols: list[str]) -> tuple[list[dict], NewsProviderQuality]:
@@ -24,7 +57,12 @@ def observe_provider_call(*, provider_name: str, fetch, symbols: list[str]) -> t
             provider_name=provider_name,
             available=False,
             latency_ms=round((perf_counter() - started) * 1000, 3),
-            error=str(error),
+            error=re.sub(
+                r'([?&](?:token|api[-_]?key)=)[^&\s]+',
+                r'\1[redacted]',
+                str(error),
+                flags=re.IGNORECASE,
+            )[:500],
         )
         raise
 

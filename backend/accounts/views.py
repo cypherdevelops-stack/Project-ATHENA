@@ -14,6 +14,7 @@ from .monitor import terminal_process_running
 from backend.execution.paper_engine import PaperTradeError, build_paper_trade
 from .handshake import discover_demo_account, verify_broker_handshake
 from .metaapi import MetaApiHandshakeError, verify_metaapi_handshake
+from .deriv import DerivHandshakeError, verify_deriv_handshake
 from .models import Account, AccountInstrumentCapability
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,16 @@ def create_account_view(request):
         login = verified['account_id']
         server = verified['server']
         broker = verified['broker']
+    elif connection_method == 'DERIV':
+        try:
+            verified = verify_deriv_handshake(password)
+        except DerivHandshakeError as error:
+            return JsonResponse({'detail': str(error)}, status=422)
+        platform = verified['platform']
+        login = verified['account_id']
+        server = verified['server']
+        broker = verified['broker']
+        external_account_id = verified['account_id']
     elif connection_method == 'BROKER':
         if not platform or not login or not server:
             return JsonResponse({'detail': 'Platform, login, and server are required for broker login.'}, status=400)
@@ -194,13 +205,13 @@ def create_account_view(request):
         return JsonResponse({'detail': 'Select a supported connection method.'}, status=400)
 
     discovery = body.get('marketDiscovery', {}) if isinstance(body.get('marketDiscovery', {}), dict) else {}
-    if connection_method == 'METAAPI':
+    if connection_method in {'METAAPI', 'DERIV'}:
         discovery = verified['market_discovery']
     allowed_instruments = body.get('allowedInstruments')
     if not isinstance(allowed_instruments, list):
         canonical_asset = str(body.get('canonicalAsset', '')).strip()
         allowed_instruments = [canonical_asset] if canonical_asset else []
-    if connection_method == 'METAAPI' and verified['market_discovery']['canonicalAsset']:
+    if connection_method in {'METAAPI', 'DERIV'} and verified['market_discovery']['canonicalAsset']:
         canonical_asset = verified['market_discovery']['canonicalAsset']
         allowed_instruments = [canonical_asset]
     else:
@@ -217,7 +228,7 @@ def create_account_view(request):
         terminal_path=normalize_terminal_path(body.get('terminalPath', '')),
         password_encrypted=encrypt_password(password),
         canonical_asset=canonical_asset,
-        broker_symbol=verified['market_discovery']['brokerSymbol'] if connection_method == 'METAAPI' else str(body.get('brokerSymbol', '')).strip(),
+        broker_symbol=(verified['market_discovery']['brokerSymbol'] or '') if connection_method in {'METAAPI', 'DERIV'} else str(body.get('brokerSymbol', '')).strip(),
         market_discovery=discovery,
         allowed_instruments=allowed_instruments,
         balance=verified.get('balance', body.get('balance', 0)) or 0,
@@ -226,7 +237,7 @@ def create_account_view(request):
         base_currency=str(verified.get('currency', body.get('currency', 'USD'))).strip()[:3] or 'USD',
         account_mode=str(verified.get('account_mode', body.get('accountMode', ''))).strip(),
         trade_allowed=verified.get('trade_allowed', bool(body.get('tradeAllowed', False))),
-        terminal_connected=connection_method == 'METAAPI' or bool(body.get('terminalConnected', False)),
+        terminal_connected=connection_method in {'METAAPI', 'DERIV'} or bool(body.get('terminalConnected', False)),
         last_handshake_at=timezone.now() if discovery else None,
         handshake_status='SUCCESS' if discovery else '',
     )
@@ -310,6 +321,42 @@ def discover_account_view(request):
                 'brokerSymbol': discovery['brokerSymbol'],
                 'marketDiscovery': discovery,
                 'existingPositions': result['existing_positions'],
+                'executionValidation': 'API_READ_ONLY',
+            },
+        })
+    if connection_method == 'DERIV':
+        token = body.get('password', '')
+        if not isinstance(token, str) or not token:
+            return JsonResponse({'detail': 'A Deriv API token is required.'}, status=400)
+        try:
+            result = verify_deriv_handshake(token)
+        except DerivHandshakeError as error:
+            return JsonResponse({'status': 'FAILED', 'reason': str(error)}, status=422)
+        discovery = result['market_discovery']
+        return JsonResponse({
+            'status': 'SUCCESS',
+            'stage': 'USER_POLICY_CONFIGURATION',
+            'completedStages': [
+                'ACCOUNT_ONBOARDING', 'AUTHENTICATE_ACCOUNT', 'VERIFY_IDENTITY',
+                'DISCOVER_ACCOUNT', 'VALIDATE', 'BUILD_ACCOUNT_PROFILE',
+            ],
+            'discovery': {
+                'broker': result['broker'],
+                'server': result['server'],
+                'login': result['account_id'],
+                'balance': result['balance'],
+                'equity': result['equity'],
+                'currency': result['currency'],
+                'leverage': result['leverage'],
+                'accountMode': result['account_mode'],
+                'platform': result['platform'],
+                'terminalConnected': True,
+                'tradeAllowed': False,
+                'marketData': discovery['marketData'],
+                'canonicalAsset': discovery['canonicalAsset'],
+                'brokerSymbol': discovery['brokerSymbol'],
+                'marketDiscovery': discovery,
+                'existingPositions': 0,
                 'executionValidation': 'API_READ_ONLY',
             },
         })
@@ -430,9 +477,10 @@ def update_account_view(request):
     account = _account_for(request) if account_id in (None, '') else Account.objects.filter(pk=account_id, user=request.user).first()
     if account is None:
         return JsonResponse({'detail': 'Account was not found.'}, status=404)
-    if account.connection_method == 'METAAPI' and bool(body.get('enabled')):
+    if account.connection_method in {'METAAPI', 'DERIV'} and bool(body.get('enabled')):
+        adapter = 'MetaAPI' if account.connection_method == 'METAAPI' else 'Deriv'
         return JsonResponse({
-            'detail': 'MetaAPI accounts can be onboarded, but trading actions require a MetaAPI execution adapter.',
+            'detail': f'{adapter} accounts can be onboarded, but trading actions require an execution adapter.',
         }, status=422)
 
     password = body.get('password')
@@ -461,6 +509,28 @@ def update_account_view(request):
             account.broker_symbol = account.market_discovery['brokerSymbol'] or ''
             account.last_handshake_at = timezone.now()
             account.handshake_status = 'SUCCESS'
+        elif account.connection_method == 'DERIV':
+            try:
+                verified_deriv_account = verify_deriv_handshake(password)
+            except DerivHandshakeError as error:
+                return JsonResponse({'detail': str(error)}, status=422)
+            account.platform = verified_deriv_account['platform']
+            account.login = verified_deriv_account['account_id']
+            account.external_account_id = verified_deriv_account['account_id']
+            account.broker = verified_deriv_account['broker']
+            account.server = verified_deriv_account['server']
+            account.balance = verified_deriv_account['balance']
+            account.equity = verified_deriv_account['equity']
+            account.leverage = verified_deriv_account['leverage']
+            account.base_currency = verified_deriv_account['currency']
+            account.account_mode = verified_deriv_account['account_mode']
+            account.trade_allowed = False
+            account.terminal_connected = True
+            account.market_discovery = verified_deriv_account['market_discovery']
+            account.canonical_asset = ''
+            account.broker_symbol = ''
+            account.last_handshake_at = timezone.now()
+            account.handshake_status = 'SUCCESS'
         account.password_encrypted = encrypt_password(password)
     if 'terminal_path' in body:
         account.terminal_path = normalize_terminal_path(body['terminal_path'])
@@ -476,7 +546,7 @@ def update_account_view(request):
     }
     for field, value in body.items():
         if field in allowed_fields and not (
-            account.connection_method == 'METAAPI' and field in {'broker', 'server'}
+            account.connection_method in {'METAAPI', 'DERIV'} and field in {'broker', 'server'}
         ):
             setattr(account, field, value)
     account.save()

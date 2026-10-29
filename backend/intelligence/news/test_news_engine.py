@@ -29,6 +29,24 @@ class StaticCalendarProvider:
         return self.items
 
 
+class NamedStaticProvider:
+    def __init__(self, name, items):
+        self.name = name
+        self.items = items
+        self.calls = 0
+
+    def fetch_latest(self, *, symbols):
+        self.calls += 1
+        return self.items
+
+
+class FailingProvider:
+    name = 'failing_provider'
+
+    def fetch_latest(self, *, symbols):
+        raise RuntimeError('provider unavailable')
+
+
 class FixedSentimentModel:
     name = 'test_model'
     version = 'test-1'
@@ -38,6 +56,68 @@ class FixedSentimentModel:
 
 
 class NewsEngineTests(TestCase):
+    def test_provider_selection_uses_remaining_quota_and_skips_exhausted_sources(self):
+        lower_capacity = NamedStaticProvider('lower_capacity', [{'title': 'Lower capacity story'}])
+        higher_capacity = NamedStaticProvider('higher_capacity', [{'title': 'Higher capacity story'}])
+        for _ in range(10):
+            NewsProviderQuality.objects.create(
+                provider_name='lower_capacity',
+                available=True,
+                item_count=1,
+            )
+        for _ in range(10):
+            NewsProviderQuality.objects.create(
+                provider_name='higher_capacity',
+                available=True,
+                item_count=1,
+            )
+        engine = NewsEngine(
+            [lower_capacity, higher_capacity],
+            settings={
+                'required_provider_count': 1,
+                'provider_limits': {
+                    'lower_capacity': {'period_seconds': 86400, 'limit': 10},
+                    'higher_capacity': {'period_seconds': 86400, 'limit': 100},
+                },
+            },
+        )
+
+        result = engine.analyze(symbol='XAUUSD')
+
+        self.assertTrue(result.provider_available)
+        self.assertEqual(lower_capacity.calls, 0)
+        self.assertEqual(higher_capacity.calls, 1)
+
+    def test_engine_keeps_healthy_provider_when_another_source_fails(self):
+        result = NewsEngine(
+            [FailingProvider(), StaticProvider([{
+                'title': 'Dollar gains on strong growth',
+                'source': 'wire',
+                'published_at': '2026-08-27T12:00:00+00:00',
+            }])],
+            settings={'required_provider_count': 2},
+        ).analyze(
+            symbol='EURUSD',
+            now=datetime(2026, 8, 27, 12, 1, tzinfo=timezone.utc),
+        )
+
+        self.assertTrue(result.provider_available)
+        self.assertEqual(len(result.events), 1)
+        self.assertFalse(NewsProviderQuality.objects.get(provider_name='failing_provider').available)
+
+    def test_engine_builds_all_configured_news_sources(self):
+        engine = NewsEngine(settings={
+            'feed_url': 'https://feed.test/news',
+            'rss_url': 'https://feed.test/rss',
+            'calendar_url': 'https://feed.test/calendar',
+        })
+
+        self.assertEqual(
+            {provider.name for provider in engine.providers},
+            {'json_feed', 'rss_feed'},
+        )
+        self.assertEqual(engine.calendar_provider.name, 'economic_calendar')
+
     def test_engine_creates_asset_relative_usd_impact(self):
         engine = NewsEngine(StaticProvider([{
             'id': 'fed-1', 'title': 'Federal Reserve hawkish rate decision supports dollar',

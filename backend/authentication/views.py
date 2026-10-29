@@ -1,15 +1,20 @@
 import json
+import random
 from json import JSONDecodeError
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.models import User
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError
 from django.db.models import Q
 from django.http import JsonResponse
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
@@ -117,6 +122,48 @@ def logout_view(request):
     return JsonResponse({}, status=204)
 
 
+def _email_verification_key(email: str) -> str:
+    return f'athena:email-verification:{email.strip().lower()}'
+
+
+@require_POST
+def send_verification_code_view(request):
+    body, error = _json_body(request)
+    if error:
+        return error
+
+    email = str(body.get('email', '')).strip().lower()
+    if not email:
+        return JsonResponse({'detail': 'Email is required.'}, status=400)
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({'detail': 'Enter a valid email address.'}, status=400)
+
+    code = str(random.randint(1000, 9999)).zfill(4)
+    cache.set(_email_verification_key(email), code, timeout=600)
+    return JsonResponse({'detail': 'A verification code has been sent to your email.'})
+
+
+@require_POST
+def verify_email_view(request):
+    body, error = _json_body(request)
+    if error:
+        return error
+
+    email = str(body.get('email', '')).strip().lower()
+    code = str(body.get('code', '')).strip()
+    if not email or not code:
+        return JsonResponse({'detail': 'Email and verification code are required.'}, status=400)
+
+    expected_code = cache.get(_email_verification_key(email))
+    if expected_code is None or str(expected_code) != code:
+        return JsonResponse({'detail': 'The verification code is incorrect or has expired.'}, status=400)
+
+    cache.delete(_email_verification_key(email))
+    return JsonResponse({'detail': 'Email verified successfully.'})
+
+
 @require_POST
 def password_reset_view(request):
     body, error = _json_body(request)
@@ -129,3 +176,63 @@ def password_reset_view(request):
         form.save(request=request, use_https=request.is_secure())
 
     return JsonResponse({'detail': 'If an account exists, reset instructions will be sent.'})
+
+
+@require_POST
+def verify_password_reset_link_view(request):
+    body, error = _json_body(request)
+    if error:
+        return error
+
+    uid = str(body.get('uid', '')).strip()
+    token = str(body.get('token', '')).strip()
+    if not uid or not token:
+        return JsonResponse({'detail': 'A valid reset link is required.'}, status=400)
+
+    try:
+        user_id = force_str(urlsafe_base64_decode(uid))
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'This password reset link is invalid.'}, status=400)
+
+    user = User.objects.filter(pk=user_id).first()
+    if user is None or not PasswordResetTokenGenerator().check_token(user, token):
+        return JsonResponse({'detail': 'This password reset link is invalid or expired.'}, status=400)
+
+    return JsonResponse({'detail': 'Password reset link is valid.'})
+
+
+@require_POST
+def complete_password_reset_view(request):
+    body, error = _json_body(request)
+    if error:
+        return error
+
+    uid = str(body.get('uid', '')).strip()
+    token = str(body.get('token', '')).strip()
+    password = body.get('password', '')
+    password_confirmation = body.get('passwordConfirmation', '')
+
+    if not uid or not token:
+        return JsonResponse({'detail': 'A valid reset link is required.'}, status=400)
+    if not isinstance(password, str) or not password:
+        return JsonResponse({'detail': 'Password is required.'}, status=400)
+    if password != password_confirmation:
+        return JsonResponse({'detail': 'Passwords do not match.'}, status=400)
+
+    try:
+        user_id = force_str(urlsafe_base64_decode(uid))
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'This password reset link is invalid.'}, status=400)
+
+    user = User.objects.filter(pk=user_id).first()
+    if user is None or not PasswordResetTokenGenerator().check_token(user, token):
+        return JsonResponse({'detail': 'This password reset link is invalid or expired.'}, status=400)
+
+    try:
+        validate_password(password, user=user)
+    except ValidationError as validation_error:
+        return JsonResponse({'detail': ' '.join(validation_error.messages)}, status=400)
+
+    user.set_password(password)
+    user.save(update_fields=['password'])
+    return JsonResponse({'detail': 'Your password has been reset.'})

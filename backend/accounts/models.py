@@ -13,7 +13,7 @@ class Account(models.Model):
     platform = models.CharField(max_length=20, default='MT5')
     connection_method = models.CharField(
         max_length=16,
-        choices=[('BROKER', 'Broker login'), ('METAAPI', 'MetaAPI')],
+        choices=[('BROKER', 'Broker login'), ('METAAPI', 'MetaAPI'), ('DERIV', 'Deriv')],
         default='BROKER',
     )
     external_account_id = models.CharField(max_length=120, blank=True)

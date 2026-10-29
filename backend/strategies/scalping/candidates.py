@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from .gates import detect_scalping_setup, evaluate_gates
 from backend.execution.xgboost_engine import XGBoostEngine
-from backend.smc.detector import detect_entry_confirmation
-from backend.smc.context_service import build_smc_context, extract_smc_evidence
 from backend.market.momentum import momentum_evidence
+from backend.smc.context_service import build_smc_context, extract_smc_evidence
+from backend.smc.detector import detect_entry_confirmation
 
 
 def _in_zone(price: float, item: dict) -> bool:
@@ -177,7 +177,7 @@ def generate_scalping_candidates(*, account, broker_symbol: str, current_price: 
 
     if candidates:
         return candidates
-    return [{
+    no_candidate = [{
         'candidateId': f'{broker_symbol}:SCALPING:NO_CANDIDATE',
         'asset': 'XAUUSD',
         'brokerSymbol': broker_symbol,
@@ -196,6 +196,7 @@ def generate_scalping_candidates(*, account, broker_symbol: str, current_price: 
         'scoreComponents': {},
         'gates': [],
     }]
+    return no_candidate
 
 
 def build_decision_stream(*, candidates: list[dict], m1_features: dict, m5_features: dict, current_price: float, waiting_mechanism=None, market: dict | None = None) -> dict:

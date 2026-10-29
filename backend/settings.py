@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -134,7 +135,7 @@ def _database_from_url(url: str) -> dict:
         for key, values in query.items()
         if key in {'sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'application_name'}
     }
-    options.setdefault('sslmode', os.getenv('DB_SSLMODE', 'require'))
+    options.setdefault('sslmode', os.getenv('DB_SSLMODE', os.getenv('DATABASE_SSLMODE', 'require')))
     options['connect_timeout'] = int(os.getenv('DB_CONNECT_TIMEOUT', '10'))
     return {
         'ENGINE': 'django.db.backends.postgresql',
@@ -149,17 +150,30 @@ def _database_from_url(url: str) -> dict:
     }
 
 
-def _required_database_url(*names: str) -> str:
+def _database_url_candidates(*names: str) -> list[str]:
+    values = []
     for name in names:
         value = os.getenv(name)
         if value:
+            values.append(value)
+    if os.getenv('DATABASE_URL'):
+        values.insert(0, os.getenv('DATABASE_URL'))
+    return values
+
+
+def _required_database_url(*names: str) -> str:
+    for value in _database_url_candidates(*names):
+        if value:
             return value
-    raise ValueError(
-        f'Missing database URL. Set one of: {", ".join(names)}.'
+    raise ImproperlyConfigured(
+        'Configure a Neon PostgreSQL URL in DATABASE_URL or one of: '
+        + ', '.join(names)
+        + '.'
     )
 
 
 _postgres_env_names = (
+    'DATABASE_URL',
     'ATHENA_CORE_PROD_DATABASE_URL',
     'athena-core-prod_DATABASE_URL',
     'athena-core-prodDATABASE_URL',
@@ -171,15 +185,11 @@ _postgres_env_names = (
     'ATHENA_LEARNING_MEMORY_DATABASE_URL',
     'athena-learning-memory_DATABASE_URL',
 )
-_db_engine = os.getenv('DB_ENGINE')
-if _db_engine is None:
-    _db_engine = (
-        'django.db.backends.postgresql'
-        if any(os.getenv(name) for name in _postgres_env_names)
-        else 'django.db.backends.sqlite3'
-    )
+_db_engine = (os.getenv('DB_ENGINE') or '').strip().lower()
+if not _db_engine:
+    _db_engine = 'django.db.backends.postgresql' if any(os.getenv(name) for name in _postgres_env_names) else 'django.db.backends.sqlite3'
 
-if _db_engine == 'django.db.backends.sqlite3':
+if _db_engine == 'django.db.backends.sqlite3' and os.getenv('ALLOW_LOCAL_SQLITE', '').lower() in {'1', 'true', 'yes', 'on'}:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -187,28 +197,31 @@ if _db_engine == 'django.db.backends.sqlite3':
         }
     }
 else:
-    DATABASES = {
-        'default': _database_from_url(_required_database_url(
-            'ATHENA_CORE_PROD_DATABASE_URL',
-            'athena-core-prod_DATABASE_URL',
-            'athena-core-prodDATABASE_URL',
-        )),
-        'market_intelligence': _database_from_url(_required_database_url(
-            'ATHENA_MARKET_INTELLIGENCE_DATABASE_URL',
-            'athena-market-intelligence_DATABASE_URL',
-            'athena-market-intelligenceDATABASE_URL',
-        )),
-        'backtesting': _database_from_url(_required_database_url(
-            'ATHENA_BACKTESTING_LAB_DATABASE_URL',
-            'athena-backtesting-lab_DATABASE_URL',
-        )),
-        'learning_memory': _database_from_url(_required_database_url(
-            'ATHENA_LEARNING_MEMORY_DATABASE_URL',
-            'athena-learning-memory_DATABASE_URL',
-        )),
-    }
+    default_url = _required_database_url(
+        'DATABASE_URL',
+        'ATHENA_CORE_PROD_DATABASE_URL',
+        'athena-core-prod_DATABASE_URL',
+        'athena-core-prodDATABASE_URL',
+    )
+    DATABASES = {'default': _database_from_url(default_url)}
 
-DATABASE_ROUTERS = ['backend.database_router.AthenaDatabaseRouter']
+    market_url = os.getenv('ATHENA_MARKET_INTELLIGENCE_DATABASE_URL') or os.getenv('athena-market-intelligence_DATABASE_URL') or os.getenv('athena-market-intelligenceDATABASE_URL')
+    if market_url:
+        DATABASES['market_intelligence'] = _database_from_url(market_url)
+
+    backtesting_url = os.getenv('ATHENA_BACKTESTING_LAB_DATABASE_URL') or os.getenv('athena-backtesting-lab_DATABASE_URL')
+    if backtesting_url:
+        DATABASES['backtesting'] = _database_from_url(backtesting_url)
+
+    learning_memory_url = os.getenv('ATHENA_LEARNING_MEMORY_DATABASE_URL') or os.getenv('athena-learning-memory_DATABASE_URL')
+    if learning_memory_url:
+        DATABASES['learning_memory'] = _database_from_url(learning_memory_url)
+
+    direct_url = os.getenv('DATABASE_URL_UNPOOLED') or os.getenv('ATHENA_CORE_PROD_DATABASE_URL_UNPOOLED')
+    if direct_url:
+        DATABASES['direct'] = _database_from_url(direct_url)
+
+DATABASE_ROUTERS = ['backend.database_router.AthenaDatabaseRouter', 'backend.db_router.MigrationRouter']
 
 
 # Password validation

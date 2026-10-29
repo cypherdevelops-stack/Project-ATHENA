@@ -1,5 +1,5 @@
 """
-URL configuration for backend project.
+URL configuration for backend project..
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/6.0/topics/http/urls/
@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/backtesting/', include('backend.backtesting.urls')),
     path('api/strategies/scalping/', include('backend.strategies.scalping.urls')),
     path('api/strategies/day-trading/', include('backend.strategies.day_trading.urls')),
+    path('api/strategies/reports/', include('backend.strategies.report_urls')),
     path('accounts/', include('django.contrib.auth.urls')),
     re_path(
         r'^(?!api(?:/|$)|admin(?:/|$)|accounts(?:/|$)|static(?:/|$)|media(?:/|$)).*$',

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from .classifier import classify_event
@@ -11,11 +12,14 @@ from .entities import extract_entities
 from .impact import asset_score, event_impact, relative_currency_strength
 from .lifecycle import advance_event_state
 from .normalizer import normalize_event
-from .providers.json_feed import JsonFeedProvider
-from .providers.economic_calendar import EconomicCalendarProvider
+from .provider_quality import provider_quota_status
+from .providers.registry import build_configured_registry
 from .relationships import relationship_map
 from .risk import assess_news_risk
 from .sentiment import FinancialSentimentModel, analyze_sentiment
+
+
+logger = logging.getLogger(__name__)
 
 
 class NewsEngine:
@@ -23,43 +27,99 @@ class NewsEngine:
         self.settings = {**news_settings(), **(settings or {})}
         self.relationships = relationship_map(self.settings.get('relationships'))
         self.provider = provider
-        if self.provider is None and self.settings.get('feed_url'):
-            self.provider = JsonFeedProvider(
-                self.settings['feed_url'], timeout=self.settings['timeout'],
-                api_key=self.settings.get('api_key'), api_key_header=self.settings.get('api_key_header', 'Authorization'),
-            )
         self.calendar_provider = calendar_provider
+        self.providers = []
+        if self.provider is not None:
+            self.providers = list(self.provider) if isinstance(self.provider, (list, tuple)) else [self.provider]
+        else:
+            registry = build_configured_registry(self.settings)
+            self.providers = [
+                registry.get(name)
+                for name in registry.health()
+                if name != 'economic_calendar'
+            ]
+            if self.calendar_provider is None:
+                self.calendar_provider = registry.get('economic_calendar')
         self.sentiment_model = sentiment_model
-        if self.calendar_provider is None and self.settings.get('calendar_url'):
-            self.calendar_provider = EconomicCalendarProvider(
-                self.settings['calendar_url'], timeout=self.settings['timeout'],
-                api_key=self.settings.get('api_key'), api_key_header=self.settings.get('api_key_header', 'Authorization'),
-            )
 
     def analyze(self, *, symbol: str, technical_direction: str | None = None, regime: str = 'UNKNOWN', now: datetime | None = None) -> NewsIntelligence:
         now = now or datetime.now(timezone.utc)
-        if self.provider is None:
+        if not self.providers and self.calendar_provider is None:
             return self._unavailable('News provider is not configured.')
         try:
             from .provider_quality import observe_provider_call
-            raw_items, _ = observe_provider_call(
-                provider_name=getattr(self.provider, 'name', 'news_provider'),
-                fetch=self.provider.fetch_latest,
-                symbols=[symbol],
+            raw_items = []
+            successful_providers = 0
+            required_provider_count = max(1, int(self.settings.get('required_provider_count', 2)))
+            provider_limits = self.settings.get('provider_limits', {})
+            providers_by_remaining_quota = sorted(
+                self.providers,
+                key=lambda provider: (
+                    lambda quota: quota['remaining'] / quota['limit']
+                )(provider_quota_status(
+                    provider_name=getattr(provider, 'name', 'news_provider'),
+                    limits=provider_limits.get(getattr(provider, 'name', 'news_provider'), {
+                        'period_seconds': 86400,
+                        'limit': 100,
+                    }),
+                )),
+                reverse=True,
             )
-            if self.calendar_provider is not None:
-                calendar_items, _ = observe_provider_call(
-                    provider_name=getattr(self.calendar_provider, 'name', 'calendar_provider'),
-                    fetch=lambda symbols: self.calendar_provider.fetch_events(start=now, end=now + timedelta(hours=24)),
-                    symbols=[symbol],
+            for provider in providers_by_remaining_quota:
+                if successful_providers >= required_provider_count:
+                    break
+                provider_name = getattr(provider, 'name', 'news_provider')
+                quota = provider_quota_status(
+                    provider_name=provider_name,
+                    limits=provider_limits.get(provider_name, {
+                        'period_seconds': 86400,
+                        'limit': 100,
+                    }),
                 )
-                raw_items += calendar_items
+                if not quota['available']:
+                    continue
+                try:
+                    items, _ = observe_provider_call(
+                        provider_name=provider_name,
+                        fetch=provider.fetch_latest,
+                        symbols=[symbol],
+                    )
+                    raw_items.extend(items)
+                    successful_providers += 1
+                except Exception as error:
+                    logger.warning(
+                        'News provider %s failed; trying the next available provider.',
+                        provider_name,
+                    )
+            if self.calendar_provider is not None:
+                calendar_name = getattr(self.calendar_provider, 'name', 'calendar_provider')
+                calendar_quota = provider_quota_status(
+                    provider_name=calendar_name,
+                    limits=provider_limits.get(calendar_name, {
+                        'period_seconds': 86400,
+                        'limit': 100,
+                    }),
+                )
+                try:
+                    if calendar_quota['available']:
+                        calendar_items, _ = observe_provider_call(
+                            provider_name=calendar_name,
+                            fetch=lambda symbols: self.calendar_provider.fetch_events(start=now, end=now + timedelta(hours=24)),
+                            symbols=[symbol],
+                        )
+                        raw_items.extend(calendar_items)
+                        successful_providers += 1
+                except Exception:
+                    logger.warning('News calendar provider %s failed.', calendar_name)
             events = [normalize_event(item, source_reliability=float(item.get('source_reliability', 0.7))) for item in raw_items]
             events = [extract_entities(classify_event(event)) for event in events if event.headline]
             events = cluster_events(events)
             events = [advance_event_state(event, now=now, post_event_minutes=self.settings['post_event_blackout_minutes']) for event in events]
         except Exception as error:
+            logger.exception('News analysis failed for %s.', symbol)
             return self._unavailable(f'News provider unavailable: {error}')
+        if not raw_items and successful_providers == 0:
+            return self._unavailable('All configured news providers are unavailable.')
         if not events:
             locked = bool(self.settings['fail_closed'])
             return NewsIntelligence(True, 'WAIT', 0.0, 'NEUTRAL', 0.0, locked, 'No headlines were available.', events=())

@@ -10,7 +10,7 @@ from backend.accounts.models import Account
 
 from .config import news_settings
 from .models import AdaptiveNewsStatistic, NewsIntelligenceSnapshot, NewsReactionObservation
-from .provider_quality import provider_quality_summary
+from .provider_quality import provider_quality_summary, provider_quota_status
 from .providers.registry import build_configured_registry
 
 
@@ -179,9 +179,18 @@ def adaptive_statistics_view(request):
 def provider_health_view(request):
     settings = news_settings()
     registry = build_configured_registry(settings)
+    providers = registry.health()
     return JsonResponse({
-        'providers': registry.health(),
-        'quality': [provider_quality_summary(provider_name=name) for name in registry.health()],
-        'configured': bool(registry.health()),
+        'providers': providers,
+        'quality': [provider_quality_summary(provider_name=name) for name in providers],
+        'quotas': {
+            name: provider_quota_status(
+                provider_name=name,
+                limits=settings['provider_limits'].get(name, {'period_seconds': 86400, 'limit': 100}),
+            )
+            for name in providers
+        },
+        'requiredProviderCount': settings.get('required_provider_count', 2),
+        'configured': bool(providers),
         'failClosed': settings['fail_closed'],
     })
